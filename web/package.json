@@ -1,6 +1,6 @@
 {
   "name": "mc-gamertime-web",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "MC GamerTime web client — React + Vite single-page app.",
   "license": "MIT",
   "private": true,
