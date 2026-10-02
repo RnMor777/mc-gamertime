@@ -17,7 +17,7 @@ dependencies = [
     "defusedxml==0.7.1",
     "slowapi==0.1.10",
     "prometheus-client==0.26.0",
-    "pyjwt==2.13.0",
+    "pyjwt==2.14.0",
 ]
 
 [dependency-groups]
