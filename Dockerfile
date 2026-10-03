@@ -7,7 +7,7 @@ COPY web/ .
 RUN npm run build
 
 # --- stage 2: runtime ---
-FROM python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS app
+FROM python:3.12-slim@sha256:dddfd7e07f9d15aeeca61529320492139d21cac7f0070c00609243e51e4e0016 AS app
 WORKDIR /app
 
 # sqlite3 CLI is required by the disaster-recovery runbook

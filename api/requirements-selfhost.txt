@@ -2,7 +2,7 @@
 # packages (boto3 = DynamoDB/S3/SSM, mangum = Lambda adapter), plus uvicorn.
 # api/tests/test_requirements_sync.py asserts exactly that relationship.
 fastapi==0.141.1
-pyjwt==2.13.0
+pyjwt==2.14.0
 bcrypt==5.0.0
 httpx==0.28.1
 python-ulid==4.0.1

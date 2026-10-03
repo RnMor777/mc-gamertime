@@ -1,6 +1,6 @@
 [project]
 name = "mc-gamertime-api"
-version = "0.1.2"
+version = "0.2.0"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi==0.141.1",
@@ -17,7 +17,7 @@ dependencies = [
     "defusedxml==0.7.1",
     "slowapi==0.1.10",
     "prometheus-client==0.26.0",
-    "pyjwt==2.13.0",
+    "pyjwt==2.14.0",
 ]
 
 [dependency-groups]
