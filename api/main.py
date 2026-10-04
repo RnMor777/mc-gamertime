@@ -13,6 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from lib import auth as auth_lib
+from lib import oidc as oidc_lib
 from lib import bgg as bgg_lib
 from lib import storage as storage_lib
 from lib.db import users as users_lib
@@ -21,6 +22,7 @@ from routes import (
     auth,
     games,
     notifications,
+    oidc,
     players,
     posts,
     reactions,
@@ -176,14 +178,18 @@ def _initialize() -> None:
                 "ORIGIN_TOKEN not configured (required when ORIGIN_GUARD_ENABLED=true)"
             )
         bgg_token = os.environ.get("BGG_TOKEN", "")
+        oidc_client = None
         _bootstrap_admin_user()
     else:
         try:
             jwt_secret = _ssm_param("/boardsite/jwt-secret")
             origin_token = _ssm_param("/boardsite/origin-token")
             bgg_token = _ssm_param("/boardsite/bgg-token")
+            oidc_client = _ssm()
         except Exception as exc:
             raise RuntimeError(f"SSM initialization failed: {exc}") from exc
+    
+    oidc_lib.initialize_oidc(SECRETS_PROVIDER, oidc_client)
     auth_lib.set_jwt_secret(jwt_secret)
     bgg_lib.set_bgg_token_fallback(bgg_token)
     _origin_token = origin_token
@@ -289,6 +295,7 @@ def health():
 
 
 app.include_router(auth.router, prefix="/api/auth")
+app.include_router(oidc.router, prefix="/api/auth")
 app.include_router(games.router, prefix="/api/games")
 app.include_router(players.router, prefix="/api/players")
 app.include_router(posts.router, prefix="/api/posts")
