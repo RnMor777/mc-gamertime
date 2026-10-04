@@ -43,15 +43,8 @@ def _fetch_xml(url: str, params: dict | None = None) -> Element:
     return ET.fromstring(response.text)
 
 
-def bgg_search(query: str) -> list[dict]:
-    exact_results = bgg_search(query, exact=True)
-    if exact_results:
-        return exact_results
-
-    return bgg_smart_search(query, exact=False)
-
-
-def bgg_smart_search(query: str, exact: bool = False) -> list[dict]:
+def _bgg_smart_search(query: str, exact: bool = False) -> list[dict]:
+    """Internal search implementation with optional exact matching."""
     params = {"query": query, "type": "boardgame"}
     if exact:
         params["exact"] = "1"
@@ -96,7 +89,16 @@ def bgg_smart_search(query: str, exact: bool = False) -> list[dict]:
     return sorted_results[:10]
 
 
+def bgg_search(query: str) -> list[dict]:
+    """Search BGG for games. Tries exact match first, then broad search with smart ranking."""
+    exact_results = _bgg_smart_search(query, exact=True)
+    if exact_results:
+        return exact_results
+    return _bgg_smart_search(query, exact=False)
+
+
 def bgg_detail(bgg_id: int) -> dict:
+    """Fetch full game details from BGG, including description."""
     root = _fetch_xml(f"{BGG_API_BASE}/thing", params={"id": bgg_id, "stats": 1})
     item = root.find("item")
     if item is None:
@@ -114,6 +116,7 @@ def bgg_detail(bgg_id: int) -> dict:
     if year_el is not None:
         detail["yearPublished"] = int(year_el.get("value", 0))
 
+    # Extract and clean description from HTML
     description_el = item.find("description")
     if description_el is not None and description_el.text:
         description = html.unescape(description_el.text)
