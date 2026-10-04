@@ -242,6 +242,24 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
+// OIDC Auth
+export interface OidcConfig {
+  enabled: boolean;
+  localLoginAllowed: boolean;
+}
+
+export function getOidcConfig(): Promise<OidcConfig> {
+  return apiFetch("/auth/oidc/config");
+}
+
+export function startOidcLogin(sessionId: string): Promise<{ authorizeUrl: string }> {
+  return apiFetch("/auth/oidc/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId }),
+  });
+}
+
 // Auth
 export function login(username: string, password: string): Promise<AuthUser> {
   return apiFetch("/auth/login", {
