@@ -63,6 +63,7 @@ export function AddGameDialog({ open, onClose }: Props) {
     try {
       await addGame({
         name: selected.name,
+        description: selected.description,
         bggId: selected.bggId,
         imageUrl: selected.imageUrl,
         minPlayers: selected.minPlayers,
@@ -74,6 +75,9 @@ export function AddGameDialog({ open, onClose }: Props) {
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean),
+        rulebooks: [],
+        createdAt: new Date().toISOString(),
+        pk: "",
       });
       qc.invalidateQueries({ queryKey: ["games"] });
       handleClose();
@@ -88,6 +92,7 @@ export function AddGameDialog({ open, onClose }: Props) {
     try {
       await addGame({
         name: manualName.trim(),
+        description: undefined,
         imageUrl: manualImageUrl,
         minPlayers: minPlayers ? Number(minPlayers) : undefined,
         maxPlayers: maxPlayers ? Number(maxPlayers) : undefined,
@@ -98,6 +103,9 @@ export function AddGameDialog({ open, onClose }: Props) {
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean),
+        rulebooks: [],
+        createdAt: new Date().toISOString(),
+        pk: "",
       });
       qc.invalidateQueries({ queryKey: ["games"] });
       handleClose();
@@ -209,6 +217,9 @@ export function AddGameDialog({ open, onClose }: Props) {
           <h3 className="font-bold text-base">
             {selected.name} ({selected.yearPublished})
           </h3>
+          {selected.description && (
+            <p className="text-sm text-muted-foreground line-clamp-4">{selected.description}</p>
+          )}
           <p className="text-sm text-muted-foreground">
             {selected.minPlayers}–{selected.maxPlayers} players · {selected.playTime} min · Weight{" "}
             {selected.weight?.toFixed(1)}

@@ -35,6 +35,12 @@ class UploadImageBody(BaseModel):
     contentType: str = "application/octet-stream"
 
 
+class UploadRulebookBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    filename: str = "rules.pdf"
+    contentType: str = "application/pdf"
+
+
 class PlayerVariableDefInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     label: str
@@ -80,6 +86,7 @@ def _assign_variable_ids(variables: list[dict]) -> list[dict]:
 class AddGameBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
+    description: str | None = None
     bggId: int | None = None
     imageUrl: str | None = None
     minPlayers: int | None = None
@@ -90,11 +97,13 @@ class AddGameBody(BaseModel):
     tags: list[str] = []
     playerVariables: list[PlayerVariableDefInput] = []
     trackTurnOrder: bool = False
+    rulebooks: list[dict] = []
 
 
 class UpdateGameBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str | None = None
+    description: str | None = None
     bggId: int | None = None
     imageUrl: str | None = None
     minPlayers: int | None = None
@@ -105,6 +114,7 @@ class UpdateGameBody(BaseModel):
     tags: list[str] | None = None
     playerVariables: list[PlayerVariableDefInput] | None = None
     trackTurnOrder: bool | None = None
+    rulebooks: list[dict] | None = None
 
 
 @router.get("")
@@ -114,6 +124,16 @@ def list_games_route(user: Annotated[AuthUser, Depends(require_auth)]):
         favorites = game.pop("favorites", set())
         game["isFavorited"] = user.sub in favorites
     return games
+
+
+@router.get("/{game_id}")
+def get_game_route(game_id: str, user: Annotated[AuthUser, Depends(require_auth)]):
+    game = get_game(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    favorites = game.pop("favorites", set())
+    game["isFavorited"] = user.sub in favorites
+    return game
 
 
 @router.get("/search")
@@ -140,9 +160,28 @@ def upload_game_image(body: UploadImageBody, _: Annotated[AuthUser, Depends(requ
     return {"uploadUrl": upload_url, "imageUrl": image_url}
 
 
+@router.post("/{game_id}/rulebooks/upload")
+def upload_game_rulebook(
+    game_id: str,
+    body: UploadRulebookBody,
+    _: Annotated[AuthUser, Depends(require_admin)],
+):
+    if not get_game(game_id):
+        raise HTTPException(status_code=404, detail="Game not found")
+    if body.contentType not in {"application/pdf"}:
+        raise HTTPException(status_code=422, detail="Only PDF rule books are supported")
+    upload_url, rulebook_url = build_upload_url(
+        _s3, _BUCKET, _OBJECT_BASE_URL, "game-rulebooks", body.contentType
+    )
+    return {"uploadUrl": upload_url, "rulebookUrl": rulebook_url}
+
+
 @router.post("", status_code=201)
 def create_game(body: AddGameBody, _: Annotated[AuthUser, Depends(require_admin)]):
     data = body.model_dump()
+    if data.get("description") is not None:
+        description = data["description"].strip()
+        data["description"] = description or None
     data["playerVariables"] = _assign_variable_ids(data["playerVariables"])
     game = {
         "pk": str(ULID()),
@@ -162,10 +201,14 @@ def update_game_route(
         raise HTTPException(status_code=404, detail="Game not found")
 
     updates = body.model_dump(exclude_unset=True)
+    if "description" in updates and updates["description"] is not None:
+        updates["description"] = updates["description"].strip() or None
     if "playerVariables" in updates and updates["playerVariables"] is None:
         updates["playerVariables"] = []
     if body.playerVariables is not None:
         updates["playerVariables"] = _assign_variable_ids(updates["playerVariables"])
+    if "rulebooks" in updates and updates["rulebooks"] is None:
+        updates["rulebooks"] = []
 
     updated = {**existing, **updates}
     put_game(updated)
@@ -177,7 +220,6 @@ def delete_game_route(game_id: str, _: Annotated[AuthUser, Depends(require_admin
     if not get_game(game_id):
         raise HTTPException(status_code=404, detail="Game not found")
 
-    # Block deletes that would orphan results (gameId) or recommendations (gamePk)
     result_refs = sum(1 for r in list_results() if r.get("gameId") == game_id)
     rec_refs = sum(1 for r in list_recs() if r.get("gamePk") == game_id)
     if result_refs or rec_refs:

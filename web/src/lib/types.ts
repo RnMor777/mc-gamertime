@@ -1,15 +1,25 @@
-interface PlayerVariableDef {
+export interface PlayerVariableDef {
   id: string;
   label: string;
   options: string[];
 }
+
 export interface PlayerVariableInput {
   label: string;
   options: string[];
 }
+
+export interface GameRulebook {
+  id: string;
+  filename: string;
+  url: string;
+  uploadedAt: string;
+}
+
 export interface Game {
   pk: string;
   name: string;
+  description?: string;
   bggId?: number;
   imageUrl?: string;
   minPlayers?: number;
@@ -22,12 +32,15 @@ export interface Game {
   isFavorited?: boolean;
   playerVariables?: PlayerVariableDef[];
   trackTurnOrder?: boolean;
+  rulebooks?: GameRulebook[];
 }
+
 export interface Player {
   pk: string;
   displayName: string;
   avatarUrl?: string;
 }
+
 interface ResultPlayer {
   playerId: string;
   playerName: string;
@@ -35,6 +48,7 @@ interface ResultPlayer {
   seat?: number | null;
   variables?: Record<string, string> | null;
 }
+
 export interface Result {
   pk: string;
   gameId: string;
@@ -48,6 +62,7 @@ export interface Result {
   newAchievements?: NewAchievement[];
   mood?: number | null;
 }
+
 export interface ReactionItem {
   pk: string;
   type: "reaction";
@@ -57,6 +72,7 @@ export interface ReactionItem {
   userName: string;
   createdAt: string;
 }
+
 export interface CommentItem {
   pk: string;
   type: "comment";
@@ -66,15 +82,18 @@ export interface CommentItem {
   text: string;
   createdAt: string;
 }
+
 export interface BggSearchResult {
   bggId: number;
   name: string;
   yearPublished?: number;
   thumbnail?: string;
 }
+
 export interface BggGameDetail {
   bggId: number;
   name: string;
+  description?: string;
   yearPublished?: number;
   imageUrl?: string;
   minPlayers?: number;
@@ -82,6 +101,7 @@ export interface BggGameDetail {
   playTime?: number;
   weight?: number;
 }
+
 export interface LeaderboardEntry {
   playerId: string;
   name: string;
@@ -90,6 +110,7 @@ export interface LeaderboardEntry {
   winRate: number;
   rating: number;
 }
+
 export interface HeadToHead {
   p1Id: string;
   p1Name: string;
@@ -98,16 +119,19 @@ export interface HeadToHead {
   p1Wins: number;
   p2Wins: number;
 }
+
 export interface StreakEntry {
   playerId: string;
   name: string;
   current: number;
   best: number;
 }
+
 export interface PerMonth {
   month: string;
   count: number;
 }
+
 export interface StatsResponse {
   leaderboard: LeaderboardEntry[];
   headToHead: HeadToHead[];
@@ -244,6 +268,7 @@ interface VariableOptionStat {
   winRate: number;
   avgScore: number | null;
 }
+
 interface SeatStat {
   seat: number;
   plays: number;

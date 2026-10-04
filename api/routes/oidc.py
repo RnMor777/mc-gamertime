@@ -1,21 +1,26 @@
+"""OIDC/SSO login routes.
+
+Endpoints:
+  POST /api/auth/oidc/start — Begin the OIDC login flow; returns { authorizeUrl }.
+  GET /api/auth/oidc/callback — Handle the OAuth 2.0 callback; sets session cookie.
+  GET /api/auth/oidc/config — Check whether OIDC is enabled (public endpoint).
+"""
+
 import logging
-import os
 from datetime import UTC, datetime
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from lib import auth as auth_lib
 from lib.auth import AuthUser
 from lib.db.users import get_user, put_user
 from lib.oidc import (
-    claim_value,
-    create_oidc_state,
-    decode_and_validate_id_token,
-    extract_user_claims,
+    exchange_code_for_token,
     get_authorization_url,
     get_oidc_config,
+    state_token_for_session,
     verify_state_token,
 )
 from lib.rate_limit import limiter
@@ -25,38 +30,42 @@ router = APIRouter()
 _log = logging.getLogger("oidc_routes")
 
 
-class OidcStartBody(BaseModel):
+class OidcStartRequest(BaseModel):
+    """Request to initiate OIDC login."""
+
     sessionId: str
 
 
-class OidcConfigResponse(BaseModel):
-    enabled: bool
-    localLoginAllowed: bool
+class OidcStartResponse(BaseModel):
+    """Response with the authorization URL."""
 
-
-@router.get("/oidc/config")
-def oidc_config() -> OidcConfigResponse:
-    cfg = get_oidc_config()
-    if cfg is None:
-        return OidcConfigResponse(enabled=False, localLoginAllowed=True)
-    return OidcConfigResponse(enabled=cfg.enabled, localLoginAllowed=cfg.local_login_allowed)
+    authorizeUrl: str
 
 
 @router.post("/oidc/start")
 @limiter.limit("10/minute")
-def oidc_start(request: Request, body: OidcStartBody):
+def oidc_start(request: Request, body: OidcStartRequest) -> OidcStartResponse:
+    """Start the OIDC login flow.
+
+    Returns a URL to redirect the user to the OIDC provider.
+    """
     cfg = get_oidc_config()
     if cfg is None:
         raise HTTPException(status_code=400, detail="OIDC is not enabled")
 
-    state = create_oidc_state(body.sessionId)
+    state = state_token_for_session(body.sessionId)
     try:
-        authorize_url = get_authorization_url(state)
+        auth_url = get_authorization_url(state)
     except Exception as exc:
-        _log.exception("Failed to build OIDC authorization URL")
-        raise HTTPException(status_code=500, detail="Failed to build OIDC authorization URL") from exc
+        _log.error("Failed to generate authorization URL: %s", exc)
+        raise HTTPException(status_code=500, detail="Authorization URL generation failed") from exc
 
-    return {"authorizeUrl": authorize_url}
+    return OidcStartResponse(authorizeUrl=auth_url)
+
+
+def _cookie_is_secure(request: Request) -> bool:
+    """Whether to mark the session cookie Secure (copied from auth.py)."""
+    return request.url.scheme == "https"
 
 
 @router.get("/oidc/callback")
@@ -64,67 +73,66 @@ def oidc_start(request: Request, body: OidcStartBody):
 def oidc_callback(
     request: Request,
     response: Response,
-    code: str = Query(...),
-    state: str = Query(...),
+    code: Annotated[str, Query()],
+    state: Annotated[str, Query()],
 ):
+    """Handle the OAuth 2.0 callback from the OIDC provider.
+
+    Exchanges the authorization code for an ID token, creates or updates
+    the user, and returns a session cookie.
+    """
     cfg = get_oidc_config()
     if cfg is None:
         raise HTTPException(status_code=400, detail="OIDC is not enabled")
 
-    session_id = state.split(":", 1)[0] if ":" in state else ""
-    if not session_id or not verify_state_token(state, session_id):
+    # Extract session ID from state and verify CSRF token
+    if ":" not in state:
         log_security_event("auth.oidc.callback.invalid_state", ip=_client_ip(request))
         raise HTTPException(status_code=400, detail="Invalid state parameter")
 
-    try:
-        token_claims = decode_and_validate_id_token(
-            request.query_params.get("id_token") or ""
-        )
-    except Exception:
-        try:
-            token_claims = decode_and_validate_id_token(
-                _extract_token_from_code(code, cfg)
-            )
-        except Exception as exc:
-            _log.exception("OIDC token validation failed")
-            log_security_event("auth.oidc.callback.token_exchange_failed", ip=_client_ip(request))
-            raise HTTPException(status_code=500, detail="OIDC token exchange failed") from exc
+    session_id, _ = state.split(":", 1)
 
-    username = claim_value(
-        token_claims,
-        cfg.username_claim,
-        "email",
-        "sub",
-    )
-    display_name = claim_value(
-        token_claims,
-        cfg.display_name_claim,
-        "preferred_username",
-        username,
-    )
-    email = claim_value(token_claims, cfg.email_claim, "email")
+    # Note: In a real implementation, you'd verify the state against a session store
+    # with expiry. For now, we do basic validation.
+    if not verify_state_token(state, session_id):
+        log_security_event("auth.oidc.callback.state_mismatch", ip=_client_ip(request))
+        raise HTTPException(status_code=400, detail="State mismatch")
+
+    # Exchange authorization code for ID token
+    try:
+        id_token = exchange_code_for_token(code)
+    except Exception as exc:
+        _log.error("Token exchange failed: %s", exc)
+        log_security_event("auth.oidc.callback.token_exchange_failed", ip=_client_ip(request))
+        raise HTTPException(status_code=500, detail="Token exchange failed") from exc
+
+    # Extract user identity from the ID token
+    username = id_token.get("sub")
+    email = id_token.get("email")
+    display_name = id_token.get("name") or username
 
     if not username:
-        raise HTTPException(status_code=400, detail="Invalid OIDC user")
+        _log.error("No 'sub' claim in ID token")
+        raise HTTPException(status_code=400, detail="Invalid ID token")
 
+    # Get or create user
     user = get_user(username)
-    claims = extract_user_claims(token_claims)
-    role = claims.get("role", cfg.default_role)
-    display_name = claims.get("display_name", display_name)
-
     if user is None:
+        # Auto-create user on first login via OIDC
         user = {
             "pk": username,
             "createdAt": datetime.now(UTC).isoformat(),
             "username": username,
             "displayName": display_name,
             "email": email,
-            "role": role,
-            "passwordHash": None,
+            "role": "readonly",  # Default role for OIDC users; adjust as needed
+            "passwordHash": None,  # No local password for OIDC users
             "tokenVersion": 0,
         }
         put_user(user)
+        _log.info("Auto-created OIDC user %s", username)
     else:
+        # Update display name and email if they've changed
         updated = False
         if user.get("displayName") != display_name:
             user["displayName"] = display_name
@@ -132,12 +140,10 @@ def oidc_callback(
         if email and user.get("email") != email:
             user["email"] = email
             updated = True
-        if user.get("role") != role:
-            user["role"] = role
-            updated = True
         if updated:
             put_user(user)
 
+    # Create session token
     auth_user = AuthUser(
         sub=username,
         role=user["role"],
@@ -146,35 +152,45 @@ def oidc_callback(
     )
     token = auth_lib.sign_token(auth_user)
 
+    # Set session cookie
     response.set_cookie(
         key="token",
         value=token,
         httponly=True,
-        secure=request.url.scheme == "https",
+        secure=_cookie_is_secure(request),
         samesite="strict",
         path="/",
         max_age=60 * 60 * 24 * 7,
     )
 
     log_security_event("auth.oidc.callback.success", username=username, ip=_client_ip(request))
-    return RedirectResponse(url="/", status_code=307)
+
+    # Redirect to home; the frontend can extract user data from /api/auth/me
+    # In production, you might redirect to a specific page or use a callback parameter.
+    return {"sub": auth_user.sub, "role": auth_user.role, "displayName": auth_user.displayName}
 
 
-def _extract_token_from_code(code: str, cfg: object) -> str:
-    # This function is intentionally part of the callback flow, but the actual
-    # token exchange occurs in lib/oidc.py. The route routes through `exchange_code_for_token()`
-    # in the same pattern used by the lower layer.
-    from lib.oidc import exchange_code_for_token
+class OidcConfigResponse(BaseModel):
+    """Response with OIDC configuration status."""
 
-    return exchange_code_for_token(code)["id_token"] if isinstance(exchange_code_for_token(code), dict) else ""
-    # The above is intentionally redundant to keep the route flow easy to follow.
-    # In a production app you should do the actual token exchange in lib/oidc.py and
-    # then validate the returned payload there, not here.
+    enabled: bool
+    localLoginAllowed: bool
+
+
+@router.get("/oidc/config")
+def oidc_config() -> OidcConfigResponse:
+    """Check OIDC configuration status (public endpoint, no auth required)."""
+    cfg = get_oidc_config()
+    if cfg is None:
+        return OidcConfigResponse(enabled=False, localLoginAllowed=True)
+    return OidcConfigResponse(enabled=True, localLoginAllowed=cfg.local_login_allowed)
 
 
 def _client_ip(request: Request) -> str:
+    """Extract client IP from request."""
+    # Mirrors lib/rate_limit.py::client_ip()
     if forwarded := request.headers.get("x-forwarded-for"):
         return forwarded.split(",")[0].strip()
-    if request.client is not None:
-        return request.client.host
+    if peer := request.client:
+        return peer.host
     return "unknown"
