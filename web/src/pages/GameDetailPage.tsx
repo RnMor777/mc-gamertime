@@ -3,7 +3,9 @@ import {
   ChevronLeft,
   Clock,
   Dices,
+  Download,
   ExternalLink,
+  FileText,
   Gauge,
   PenLine,
   Settings,
@@ -74,7 +76,6 @@ export default function GameDetailPage() {
   const avgScore = scoredEntries.length
     ? scoredEntries.reduce((sum, e) => sum + e.score, 0) / scoredEntries.length
     : null;
-  // strict > keeps the FIRST (earliest) achiever on ties
   const bestScore = scoredEntries.length
     ? scoredEntries.reduce((best, e) => (e.score > best.score ? e : best))
     : null;
@@ -204,6 +205,38 @@ export default function GameDetailPage() {
           </div>
         )}
 
+        {game.description && (
+          <section className="rounded-lg border bg-card p-4">
+            <h2 className="text-lg font-display font-semibold mb-2">Description</h2>
+            <p className="text-sm leading-6 text-muted-foreground whitespace-pre-line">
+              {game.description}
+            </p>
+          </section>
+        )}
+
+        {game.rulebooks && game.rulebooks.length > 0 && (
+          <section className="rounded-lg border bg-card p-4">
+            <h2 className="text-lg font-display font-semibold mb-3">Rule books</h2>
+            <div className="space-y-2">
+              {game.rulebooks.map((rulebook) => (
+                <a
+                  key={rulebook.id}
+                  href={rulebook.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between gap-3 rounded-md border p-2 text-sm hover:bg-accent transition-colors"
+                >
+                  <span className="flex items-center gap-2 min-w-0">
+                    <FileText size={14} className="text-primary shrink-0" />
+                    <span className="truncate">{rulebook.filename}</span>
+                  </span>
+                  <Download size={14} className="text-muted-foreground shrink-0" />
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-display font-semibold">Stats</h2>
@@ -240,32 +273,7 @@ export default function GameDetailPage() {
           <div
             className={`grid gap-4 mb-4 ${avgScore != null ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"}`}
           >
-            {[
-              {
-                label: "Sessions",
-                value: countSessions,
-                icon: <Dices size={18} className="mx-auto mb-1 text-primary" />,
-              },
-              {
-                label: "Players",
-                value: countPlayers,
-                icon: <Users size={18} className="mx-auto mb-1 text-primary" />,
-              },
-              ...(avgScore != null
-                ? [
-                    {
-                      label: "Avg score",
-                      value: avgScore.toFixed(1),
-                      icon: <Star size={18} className="mx-auto mb-1 text-primary" />,
-                    },
-                    {
-                      label: "High score",
-                      value: String(bestScore?.score),
-                      icon: <Trophy size={18} className="mx-auto mb-1 text-primary" />,
-                    },
-                  ]
-                : []),
-            ].map(({ label, value, icon }) => (
+            {[{ label: "Sessions", value: countSessions, icon: <Dices size={18} className="mx-auto mb-1 text-primary" /> }, { label: "Players", value: countPlayers, icon: <Users size={18} className="mx-auto mb-1 text-primary" /> }, ...(avgScore != null ? [{ label: "Avg score", value: avgScore.toFixed(1), icon: <Star size={18} className="mx-auto mb-1 text-primary" /> }, { label: "High score", value: String(bestScore?.score), icon: <Trophy size={18} className="mx-auto mb-1 text-primary" /> }] : [])].map(({ label, value, icon }) => (
               <div key={label} className="bg-card rounded-lg border p-3 text-center">
                 {icon}
                 <div className="text-xl font-display font-bold">{value}</div>
