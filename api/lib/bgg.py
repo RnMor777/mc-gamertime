@@ -1,6 +1,6 @@
-import re
-
 import contextlib
+import html
+import re
 from xml.etree.ElementTree import Element
 
 import defusedxml.ElementTree as ET
@@ -47,42 +47,41 @@ def bgg_search(query: str) -> list[dict]:
     exact_results = bgg_search(query, exact=True)
     if exact_results:
         return exact_results
-    
-    # Fall back to prioritized broad search
+
     return bgg_smart_search(query, exact=False)
+
 
 def bgg_smart_search(query: str, exact: bool = False) -> list[dict]:
     params = {"query": query, "type": "boardgame"}
     if exact:
         params["exact"] = "1"
-        
+
     root = _fetch_xml(f"{BGG_API_BASE}/search", params=params)
-    
+
     raw_results = []
     for item in root.findall("item"):
         bgg_id = item.get("id")
         if not bgg_id:
             continue
-            
+
         name_el = item.find("name")
         year_el = item.find("yearpublished")
         year = year_el.get("value") if year_el is not None else None
-        
-        name = name_el.get("value", "") if name_el is not None else ""
-        
-        raw_results.append({
-            "bggId": int(bgg_id),
-            "name": name,
-            "yearPublished": int(year) if year else None,
-        })
 
-    # Local sorting key to rank exact/closest matches highest
+        name = name_el.get("value", "") if name_el is not None else ""
+
+        raw_results.append(
+            {
+                "bggId": int(bgg_id),
+                "name": name,
+                "yearPublished": int(year) if year else None,
+            }
+        )
+
     clean_query = query.strip().lower()
 
     def score_result(item: dict) -> tuple:
         title = item["name"].strip().lower()
-        
-        # 0 = Exact match, 1 = Starts with query, 2 = Contains query, 3 = Everything else
         if title == clean_query:
             match_type = 0
         elif title.startswith(clean_query):
@@ -91,17 +90,11 @@ def bgg_smart_search(query: str, exact: bool = False) -> list[dict]:
             match_type = 2
         else:
             match_type = 3
-
-        # Secondary tie-breakers:
-        # - Shorter titles preferred (base games over long expansion titles)
-        # - Older games or lower BGG IDs (optional)
         return (match_type, len(title))
 
-    # Sort all results based on match quality
     sorted_results = sorted(raw_results, key=score_result)
-
-    # Return top 10 prioritized results
     return sorted_results[:10]
+
 
 def bgg_detail(bgg_id: int) -> dict:
     root = _fetch_xml(f"{BGG_API_BASE}/thing", params={"id": bgg_id, "stats": 1})
@@ -120,6 +113,14 @@ def bgg_detail(bgg_id: int) -> dict:
     year_el = item.find("yearpublished")
     if year_el is not None:
         detail["yearPublished"] = int(year_el.get("value", 0))
+
+    description_el = item.find("description")
+    if description_el is not None and description_el.text:
+        description = html.unescape(description_el.text)
+        description = re.sub(r"<[^>]+>", "", description)
+        description = " ".join(description.split())
+        if description:
+            detail["description"] = description
 
     image_el = item.find("image")
     if image_el is not None and image_el.text:
