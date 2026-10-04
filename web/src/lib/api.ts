@@ -6,6 +6,7 @@ import type {
   BggSearchResult,
   CommentItem,
   Game,
+  GameRulebook,
   NotificationsResponse,
   Player,
   PlayerStats,
@@ -20,9 +21,6 @@ import type {
   UserSummary,
 } from "./types";
 
-// All API calls use the /api prefix.
-// In development: Vite proxies these to http://localhost:8000
-// In production: CloudFront routes these to the Lambda function
 const BASE = "/api";
 
 export interface RateLimitError extends Error {
@@ -69,7 +67,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// Games
 export function getGames(): Promise<Game[]> {
   return apiFetch("/games");
 }
@@ -92,24 +89,39 @@ type ClearableGameField =
   | "maxPlayers"
   | "playTime"
   | "weight"
-  | "yearPublished";
+  | "yearPublished"
+  | "description";
 
 export function updateGame(
   id: string,
   data: Partial<Omit<Game, "pk" | "createdAt" | "playerVariables" | ClearableGameField>> & {
     playerVariables?: PlayerVariableInput[];
     imageUrl?: string | null;
+    description?: string | null;
     minPlayers?: number | null;
     maxPlayers?: number | null;
     playTime?: number | null;
     weight?: number | null;
     yearPublished?: number | null;
+    rulebooks?: GameRulebook[] | null;
   },
 ): Promise<Game> {
   return apiFetch(`/games/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+}
+
+export function getGameRulebookUploadUrl(
+  gameId: string,
+  filename: string,
+  contentType: string,
+): Promise<{ uploadUrl: string; rulebookUrl: string }> {
+  return apiFetch(`/games/${gameId}/rulebooks/upload`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename, contentType }),
   });
 }
 
@@ -128,6 +140,7 @@ export function deleteAvatar(username: string): Promise<void> {
 export function addGameFavorite(id: string): Promise<void> {
   return apiFetch(`/games/${id}/favorite`, { method: "POST" });
 }
+
 export function removeGameFavorite(id: string): Promise<void> {
   return apiFetch(`/games/${id}/favorite`, { method: "DELETE" });
 }
@@ -151,12 +164,10 @@ export function getBggDetail(bggId: number): Promise<BggGameDetail> {
   return apiFetch(`/games/search?bggId=${bggId}`);
 }
 
-// Players
 export function getPlayers(): Promise<Player[]> {
   return apiFetch("/players");
 }
 
-// Results
 export function getResults(): Promise<Result[]> {
   return apiFetch("/results");
 }
@@ -186,7 +197,6 @@ export function updateResult(
   });
 }
 
-// Notifications
 export function getNotifications(): Promise<NotificationsResponse> {
   return apiFetch("/notifications");
 }
@@ -195,7 +205,6 @@ export function markNotificationsRead(): Promise<void> {
   return apiFetch("/notifications/read", { method: "POST" });
 }
 
-// Reactions & Comments
 export function getReactions(): Promise<(ReactionItem | CommentItem)[]> {
   return apiFetch("/reactions");
 }
@@ -223,7 +232,6 @@ export function deleteComment(id: string): Promise<void> {
   return apiFetch(`/comments/${id}`, { method: "DELETE" });
 }
 
-// Stats
 export function getStats(): Promise<StatsResponse> {
   return apiFetch("/stats");
 }
@@ -232,7 +240,6 @@ export function getPlayerStats(playerId: string): Promise<PlayerStats> {
   return apiFetch(`/players/${playerId}/stats`);
 }
 
-// Health
 export async function checkHealth(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE}/health`);
@@ -242,7 +249,23 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
-// Auth
+export interface OidcConfig {
+  enabled: boolean;
+  localLoginAllowed: boolean;
+}
+
+export function getOidcConfig(): Promise<OidcConfig> {
+  return apiFetch("/auth/oidc/config");
+}
+
+export function startOidcLogin(sessionId: string): Promise<{ authorizeUrl: string }> {
+  return apiFetch("/auth/oidc/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId }),
+  });
+}
+
 export function login(username: string, password: string): Promise<AuthUser> {
   return apiFetch("/auth/login", {
     method: "POST",
@@ -277,7 +300,6 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   return res.json();
 }
 
-// Users (admin only)
 export function getUsers(): Promise<UserSummary[]> {
   return apiFetch("/users");
 }
@@ -310,7 +332,6 @@ export function deleteUser(username: string): Promise<void> {
   return apiFetch(`/users/${username}`, { method: "DELETE" });
 }
 
-// Settings
 export function getPublicSettings(): Promise<PublicSettings> {
   return apiFetch("/settings/public");
 }
@@ -369,7 +390,6 @@ export function getUploadUrl(
   });
 }
 
-// Recommended games (public GET, admin writes)
 export function getRecommended(): Promise<Recommendation[]> {
   return apiFetch("/recommended");
 }
