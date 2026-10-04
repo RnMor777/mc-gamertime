@@ -1,8 +1,9 @@
-import { Plus, Trash2 } from "lucide-react";
+import { Download, FileText, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useGameImageUpload } from "../hooks/useGameImageUpload";
 import { useUpdateGame } from "../hooks/useGames";
-import type { Game } from "../lib/types";
+import { getGameRulebookUploadUrl } from "../lib/api";
+import type { Game, GameRulebook } from "../lib/types";
 import { idFromPk } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
@@ -25,12 +26,15 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
   const [trackTurnOrder, setTrackTurnOrder] = useState(false);
   const [error, setError] = useState("");
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [minPlayers, setMinPlayers] = useState("");
   const [maxPlayers, setMaxPlayers] = useState("");
   const [playTime, setPlayTime] = useState("");
   const [weight, setWeight] = useState("");
   const [yearPublished, setYearPublished] = useState("");
   const [tags, setTags] = useState("");
+  const [rulebooks, setRulebooks] = useState<GameRulebook[]>([]);
+  const [uploadingRulebook, setUploadingRulebook] = useState(false);
   const { imageUrl, uploading, handleFileChange, setImageUrl } = useGameImageUpload(game.imageUrl);
 
   useEffect(() => {
@@ -43,18 +47,48 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
     );
     setTrackTurnOrder(game.trackTurnOrder ?? false);
     setName(game.name);
+    setDescription(game.description ?? "");
     setMinPlayers(game.minPlayers?.toString() ?? "");
     setMaxPlayers(game.maxPlayers?.toString() ?? "");
     setPlayTime(game.playTime?.toString() ?? "");
     setWeight(game.weight?.toString() ?? "");
     setYearPublished(game.yearPublished?.toString() ?? "");
     setTags(game.tags.join(", "));
+    setRulebooks(game.rulebooks ?? []);
     setImageUrl(game.imageUrl);
     setError("");
   }, [open, game, setImageUrl]);
 
+  const persistGame = async (nextRulebooks: GameRulebook[]) => {
+    await updateGame.mutateAsync({
+      id: idFromPk(game.pk),
+      data: {
+        name: name.trim(),
+        description: description.trim() || null,
+        imageUrl: imageUrl ?? null,
+        minPlayers: minPlayers ? Number(minPlayers) : null,
+        maxPlayers: maxPlayers ? Number(maxPlayers) : null,
+        playTime: playTime ? Number(playTime) : null,
+        weight: weight ? Number(weight) : null,
+        yearPublished: yearPublished ? Number(yearPublished) : null,
+        tags: tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+        playerVariables: variables.map((v) => ({
+          label: v.label.trim(),
+          options: v.optionsText
+            .split(",")
+            .map((o) => o.trim())
+            .filter(Boolean),
+        })),
+        trackTurnOrder,
+        rulebooks: nextRulebooks,
+      },
+    });
+  };
+
   const handleSave = async () => {
-    const playerVariables = [];
     for (const v of variables) {
       const label = v.label.trim();
       const options = v.optionsText
@@ -73,32 +107,64 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
         setError(`"${label}" has duplicate options`);
         return;
       }
-      playerVariables.push({ label, options });
     }
     if (!name.trim()) {
       setError("Name is required");
       return;
     }
     setError("");
-    await updateGame.mutateAsync({
-      id: idFromPk(game.pk),
-      data: {
-        name: name.trim(),
-        imageUrl: imageUrl ?? null,
-        minPlayers: minPlayers ? Number(minPlayers) : null,
-        maxPlayers: maxPlayers ? Number(maxPlayers) : null,
-        playTime: playTime ? Number(playTime) : null,
-        weight: weight ? Number(weight) : null,
-        yearPublished: yearPublished ? Number(yearPublished) : null,
-        tags: tags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
-        playerVariables,
-        trackTurnOrder,
-      },
-    });
+    await persistGame(rulebooks);
     onClose();
+  };
+
+  const handleRulebookUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      setError("Only PDF rule books are supported");
+      e.target.value = "";
+      return;
+    }
+
+    setUploadingRulebook(true);
+    try {
+      const { uploadUrl, rulebookUrl } = await getGameRulebookUploadUrl(
+        idFromPk(game.pk),
+        file.name,
+        file.type,
+      );
+      await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      const nextRulebooks = [
+        ...rulebooks,
+        {
+          id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+          filename: file.name,
+          url: rulebookUrl,
+          uploadedAt: new Date().toISOString(),
+        },
+      ];
+      setRulebooks(nextRulebooks);
+      await persistGame(nextRulebooks);
+      setError("");
+    } catch (err) {
+      console.error(err);
+      setError("Rule book upload failed");
+    } finally {
+      setUploadingRulebook(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleDeleteRulebook = async (rulebookId: string) => {
+    const nextRulebooks = rulebooks.filter((r) => r.id !== rulebookId);
+    setRulebooks(nextRulebooks);
+    try {
+      await persistGame(nextRulebooks);
+      setError("");
+    } catch (err) {
+      console.error(err);
+      setError("Failed to remove rule book");
+    }
   };
 
   return (
@@ -120,6 +186,15 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
         <div>
           <label className="text-sm font-medium">Name</label>
           <Input className="mt-1" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-sm font-medium">Description</label>
+          <textarea
+            className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            rows={5}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Input
@@ -157,6 +232,40 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
         <div>
           <label className="text-sm font-medium">Tags (comma-separated)</label>
           <Input className="mt-1" value={tags} onChange={(e) => setTags(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-sm font-medium">Rule books</label>
+          <div className="mt-2 space-y-2">
+            {rulebooks.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No rule books uploaded yet.</p>
+            ) : (
+              rulebooks.map((rb) => (
+                <div
+                  key={rb.id}
+                  className="flex items-center justify-between gap-2 rounded-md border bg-card p-2 text-sm"
+                >
+                  <a href={rb.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-primary hover:underline min-w-0">
+                    <FileText size={14} className="shrink-0" />
+                    <span className="truncate">{rb.filename}</span>
+                  </a>
+                  <Button variant="ghost" size="sm" onClick={() => handleDeleteRulebook(rb.id)}>
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+              ))
+            )}
+            <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground hover:bg-accent">
+              <Plus size={14} />
+              Upload PDF rule book
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={handleRulebookUpload}
+                disabled={uploadingRulebook}
+                className="hidden"
+              />
+            </label>
+          </div>
         </div>
         <div>
           <label className="text-sm font-medium">Player variables</label>
@@ -216,7 +325,7 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
         {error && <p className="text-destructive text-xs">{error}</p>}
         <Button
           className="w-full"
-          isLoading={updateGame.isPending}
+          isLoading={updateGame.isPending || uploadingRulebook}
           disabled={uploading}
           onClick={handleSave}
         >
