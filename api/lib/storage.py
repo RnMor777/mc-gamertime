@@ -125,6 +125,7 @@ EXT_BY_CONTENT_TYPE = {
     "image/gif": "gif",
     "image/webp": "webp",
     "image/avif": "avif",
+    "application/pdf": "pdf",
 }
 
 
