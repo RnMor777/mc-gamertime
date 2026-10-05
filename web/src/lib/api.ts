@@ -125,6 +125,27 @@ export function getGameRulebookUploadUrl(
   });
 }
 
+export async function downloadRulebook(rulebookUrl: string, filename: string): Promise<void> {
+  try {
+    const response = await fetch(rulebookUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download: ${response.statusText}`);
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("Download failed:", err);
+    throw err;
+  }
+}
+
 export function uploadAvatar(username: string, file: File): Promise<{ avatarUrl: string }> {
   return apiFetch(`/users/${username}/avatar`, {
     method: "POST",
