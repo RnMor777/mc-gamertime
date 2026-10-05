@@ -92,6 +92,7 @@ def _bgg_smart_search(query: str, exact: bool = False) -> list[dict]:
 def bgg_search(query: str) -> list[dict]:
     """Search BGG for games. Tries exact match first, then broad search with smart ranking."""
     exact_results = _bgg_smart_search(query, exact=True)
+    print(query, exact_results)
     if exact_results:
         return exact_results
     return _bgg_smart_search(query, exact=False)

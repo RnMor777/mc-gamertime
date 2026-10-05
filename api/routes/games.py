@@ -126,16 +126,6 @@ def list_games_route(user: Annotated[AuthUser, Depends(require_auth)]):
     return games
 
 
-@router.get("/{game_id}")
-def get_game_route(game_id: str, user: Annotated[AuthUser, Depends(require_auth)]):
-    game = get_game(game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail="Game not found")
-    favorites = game.pop("favorites", set())
-    game["isFavorited"] = user.sub in favorites
-    return game
-
-
 @router.get("/search")
 def search_games(
     _: Annotated[AuthUser, Depends(require_auth)],
@@ -147,6 +137,16 @@ def search_games(
     if not q:
         raise HTTPException(status_code=400, detail="q or bggId required")
     return bgg_search(q)
+
+
+@router.get("/{game_id}")
+def get_game_route(game_id: str, user: Annotated[AuthUser, Depends(require_auth)]):
+    game = get_game(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    favorites = game.pop("favorites", set())
+    game["isFavorited"] = user.sub in favorites
+    return game
 
 
 @router.post("/upload")
