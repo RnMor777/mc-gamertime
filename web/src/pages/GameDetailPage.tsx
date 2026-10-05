@@ -223,7 +223,6 @@ export default function GameDetailPage() {
                   key={rulebook.id}
                   href={rulebook.url}
                   download={rulebook.filename}
-                  target="_blank"
                   rel="noreferrer"
                   className="flex items-center justify-between gap-3 rounded-md border p-2 text-sm hover:bg-accent transition-colors"
                 >
