@@ -76,8 +76,6 @@ export function AddGameDialog({ open, onClose }: Props) {
           .map((t) => t.trim())
           .filter(Boolean),
         rulebooks: [],
-        createdAt: new Date().toISOString(),
-        pk: "",
       });
       qc.invalidateQueries({ queryKey: ["games"] });
       handleClose();
@@ -104,8 +102,6 @@ export function AddGameDialog({ open, onClose }: Props) {
           .map((t) => t.trim())
           .filter(Boolean),
         rulebooks: [],
-        createdAt: new Date().toISOString(),
-        pk: "",
       });
       qc.invalidateQueries({ queryKey: ["games"] });
       handleClose();
