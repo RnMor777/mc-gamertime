@@ -222,8 +222,26 @@ export default function GameDetailPage() {
                 <a
                   key={rulebook.id}
                   href={rulebook.url}
-                  download={rulebook.filename}
-                  rel="noreferrer"
+                  onClick={async (e) => {
+                    e.preventDefault(); // Stop the default link navigation
+                    try {
+                      const response = await fetch(rulebook.url);
+                      const blob = await response.blob();
+                      const blobUrl = window.URL.createObjectURL(blob);
+                      
+                      const link = document.createElement('a');
+                      link.href = blobUrl;
+                      link.download = rulebook.filename || 'rulebook';
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      
+                      window.URL.revokeObjectURL(blobUrl);
+                    } catch (err) {
+                      // Fallback if CORS blocks the fetch
+                      window.open(rulebook.url, '_blank');
+                    }
+                  }}
                   className="flex items-center justify-between gap-3 rounded-md border p-2 text-sm hover:bg-accent transition-colors"
                 >
                   <span className="flex items-center gap-2 min-w-0">
