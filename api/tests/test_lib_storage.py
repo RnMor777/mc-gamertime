@@ -113,6 +113,22 @@ def test_get_object_base_url_storage_backend_local_without_s3_endpoint_url(monke
     assert storage.get_object_base_url() == "/storage"
 
 
+def test_local_fs_client_uses_custom_prefix_dir(monkeypatch, tmp_path):
+    rulebook_root = tmp_path / "rulebooks"
+    monkeypatch.setenv("GAME_RULEBOOKS_DIR", str(rulebook_root))
+    client = storage.LocalFsClient(str(tmp_path / "default"))
+
+    client.put_object(
+        Bucket="bucket",
+        Key="game-rulebooks/test.pdf",
+        Body=b"PDF",
+        ContentType="application/pdf",
+    )
+
+    assert (rulebook_root / "game-rulebooks" / "test.pdf").read_bytes() == b"PDF"
+    assert not (tmp_path / "default" / "game-rulebooks" / "test.pdf").exists()
+
+
 def test_build_upload_url_presigns_with_prefix(monkeypatch):
     monkeypatch.delenv("S3_ENDPOINT_URL", raising=False)
     monkeypatch.setenv("STORAGE_BACKEND", "s3")
@@ -145,3 +161,5 @@ def test_build_upload_url_selfhost_returns_same_url_for_both(monkeypatch):
     assert upload_url == image_url
     assert upload_url.startswith("/storage/game-images/")
     assert upload_url.endswith(".png")
+
+
