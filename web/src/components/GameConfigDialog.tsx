@@ -1,4 +1,4 @@
-import { Download, FileText, Plus, Trash2 } from "lucide-react";
+import { FileText, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useGameImageUpload } from "../hooks/useGameImageUpload";
 import { useUpdateGame } from "../hooks/useGames";
