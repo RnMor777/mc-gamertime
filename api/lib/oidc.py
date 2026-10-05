@@ -131,13 +131,18 @@ def _fetch_discovery_document(provider_url: str) -> dict[str, Any]:
         raise RuntimeError(f"Failed to fetch OIDC discovery document from {url}: {exc}") from exc
 
 
-def create_oidc_state(session_id: str) -> str:
+def state_token_for_session(session_id: str) -> str:
+    """Create and store a state token for the given session ID.
+    
+    Returns a state string in the format: session_id:nonce
+    """
     nonce = secrets.token_urlsafe(32)
     _oidc_state_store[session_id] = nonce
     return f"{session_id}:{nonce}"
 
 
 def verify_state_token(state: str, session_id: str) -> bool:
+    """Verify a state token matches the expected session ID and nonce."""
     if not state or ":" not in state:
         return False
 
@@ -153,6 +158,7 @@ def verify_state_token(state: str, session_id: str) -> bool:
 
 
 def get_authorization_url(state: str) -> str:
+    """Generate the OIDC provider authorization URL."""
     cfg = get_oidc_config()
     if cfg is None:
         raise RuntimeError("OIDC is not enabled")
@@ -173,7 +179,45 @@ def get_authorization_url(state: str) -> str:
     return f"{auth_endpoint}?{httpx.QueryParams(params).render_url()}"
 
 
+def exchange_code_for_token(code: str) -> dict[str, Any]:
+    """Exchange an authorization code for an ID token.
+    
+    Returns the decoded ID token payload.
+    """
+    cfg = get_oidc_config()
+    if cfg is None:
+        raise RuntimeError("OIDC is not enabled")
+
+    token_endpoint = cfg.discovery.get("token_endpoint")
+    if not token_endpoint:
+        raise RuntimeError("token_endpoint missing from OIDC discovery document")
+
+    payload = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": cfg.redirect_uri,
+        "client_id": cfg.client_id,
+        "client_secret": cfg.client_secret,
+    }
+
+    try:
+        with httpx.Client() as client:
+            res = client.post(token_endpoint, data=payload, timeout=10)
+            res.raise_for_status()
+            token_response = res.json()
+    except Exception as exc:
+        raise RuntimeError(f"Failed to exchange authorization code for token: {exc}") from exc
+
+    id_token_jwt = token_response.get("id_token")
+    if not id_token_jwt:
+        raise RuntimeError("No id_token in token response from OIDC provider")
+
+    # Decode and validate the ID token
+    return decode_and_validate_id_token(id_token_jwt)
+
+
 def decode_and_validate_id_token(token: str) -> dict[str, Any]:
+    """Decode and validate an ID token using the OIDC provider's public keys."""
     cfg = get_oidc_config()
     if cfg is None:
         raise RuntimeError("OIDC is not enabled")
@@ -201,6 +245,7 @@ def decode_and_validate_id_token(token: str) -> dict[str, Any]:
 
 
 def claim_value(payload: dict[str, Any], *keys: str) -> str | None:
+    """Extract a claim value from a token payload, trying multiple keys."""
     for key in keys:
         if not key:
             continue
@@ -211,6 +256,7 @@ def claim_value(payload: dict[str, Any], *keys: str) -> str | None:
 
 
 def extract_user_claims(payload: dict[str, Any]) -> dict[str, Any]:
+    """Extract user identity claims from an ID token payload."""
     cfg = get_oidc_config()
     if cfg is None:
         return {}
