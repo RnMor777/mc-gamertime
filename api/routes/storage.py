@@ -27,7 +27,7 @@ except ImportError:  # pragma: no cover - only true inside the selfhost image
 # only keys the app ever writes here: "avatars/{username}.png" (routes/users.py),
 # "blog-images/{ulid}.{ext}" (routes/posts.py), and "game-images/{ulid}.{ext}"
 # (routes/games.py).
-_ALLOWED_PREFIXES = ("avatars/", "blog-images/", "game-images/")
+_ALLOWED_PREFIXES = ("avatars/", "blog-images/", "game-images/", "game-rulebooks/")
 
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
