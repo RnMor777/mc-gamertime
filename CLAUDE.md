@@ -125,6 +125,9 @@ The project includes a **"Full Stack" VS Code Launch Configuration**:
   every command (a `docs-site/` edit once landed in `web/package.json`).
 - `gh workflow run release-please.yml` regenerates the release PR on demand (dispatch is honoured on `main` only).
 - Renovate (`.github/renovate.json`): only runtime deps (web `dependencies`, api `[project.dependencies]`, `uvicorn`) get `fix(deps)`; everything else is `chore(deps)` — incl. Docker base-digest bumps, so an OS CVE fix reaches `:main` on merge but `latest`/`X.Y.Z` only with the next `feat:`/`fix:` release.
+  Grouping: non-major bumps go into one weekly "tooling (non-major)" PR, runtime deps into one "runtime deps" PR
+  (majors split out by `separateMajorMinor`), Docker into "docker images". `docker-compose.yml` is never digest-pinned
+  (`pinDigests: false`): `:latest@sha256:…` would freeze self-hosters on one image.
 - release-please: `docs:`/`ci:`/`chore:` are hidden changelog sections → they do NOT cut a release on their own; `feat:`/`fix:`/`perf:` do. `web/package.json` and `api/pyproject.toml` versions are bumped by `extra-files` in `release-please-config.json`.
   `api/uv.lock`'s root `mc-gamertime-api` `[[package]]` version is bumped the same way (filter uses `@.name.value` — release-please's toml parser wraps strings as `{value,start,end}`), because `--locked` consumers (CI `uv sync`, Dockerfile, `build.sh`) reject a pyproject/lock version mismatch.
 - Starlette 1.0.1 deprecated per-request cookies — use `client.cookies.set()` on TestClient instead

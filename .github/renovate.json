@@ -15,35 +15,48 @@
   },
   "packageRules": [
     {
+      "description": "Default: chore(deps) so tooling bumps (devDependencies, GitHub Actions, pre-commit hook revs, Docker base digests, docs-site) don't cut a release",
+      "matchPackageNames": ["*"],
+      "semanticCommitType": "chore"
+    },
+    {
+      "description": "One weekly PR for all non-major tooling bumps instead of one PR per package; majors stay separate PRs",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest", "pinDigest"],
+      "groupName": "tooling (non-major)"
+    },
+    {
       "matchManagers": ["dockerfile", "docker-compose"],
       "groupName": "docker images",
       "enabled": true
     },
     {
-      "description": "Default: chore(deps) so tooling bumps (devDependencies, GitHub Actions, pre-commit hook revs, Docker base digests, docs-site) don't cut a release",
-      "matchPackageNames": ["*"],
-      "semanticCommitType": "chore"
+      "description": "docker-compose.yml is what self-hosters run: a digest pin would freeze them on one :latest image",
+      "matchManagers": ["docker-compose"],
+      "pinDigests": false
     },
     {
       "description": "Runtime web deps change what ships: fix(deps) cuts a release",
       "matchManagers": ["npm"],
       "matchFileNames": ["web/package.json"],
       "matchDepTypes": ["dependencies"],
-      "semanticCommitType": "fix"
+      "semanticCommitType": "fix",
+      "groupName": "runtime deps"
     },
     {
       "description": "Runtime API deps ([project.dependencies]) change what ships: fix(deps)",
       "matchManagers": ["pep621"],
       "matchFileNames": ["api/pyproject.toml"],
       "matchDepTypes": ["project.dependencies"],
-      "semanticCommitType": "fix"
+      "semanticCommitType": "fix",
+      "groupName": "runtime deps"
     },
     {
       "description": "uvicorn (selfhost group) ships in the release image; dependency-groups can't be told apart by depType, so match by name. The aws group (boto3, mangum) stays chore: releases ship only the selfhost image, and Lambda deploys don't use releases",
       "matchManagers": ["pep621"],
       "matchFileNames": ["api/pyproject.toml"],
       "matchPackageNames": ["uvicorn"],
-      "semanticCommitType": "fix"
+      "semanticCommitType": "fix",
+      "groupName": "runtime deps"
     },
     {
       "description": "Weekly lock file refresh is maintenance: chore(deps)",
