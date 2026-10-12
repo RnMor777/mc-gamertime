@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.3](https://github.com/Strandgaard96/mc-gamertime/compare/v0.3.2...v0.3.3) (2026-10-12)
+
+
+### Bug Fixes
+
+* **deps:** patch Dependabot security alerts ([4605215](https://github.com/Strandgaard96/mc-gamertime/commit/46052155e890933efb4178a91cde309183060874))
+* **deps:** patch Dependabot security alerts ([8ed027b](https://github.com/Strandgaard96/mc-gamertime/commit/8ed027b3c4ca9413d48fc0342fa163de6abaf892))
+* **deps:** regenerate docs-site lockfile with npm 10 ([355ff80](https://github.com/Strandgaard96/mc-gamertime/commit/355ff80d3410bfb7e5cbc0bac03e23b141493998))
+
 ## [0.3.2](https://github.com/Strandgaard96/mc-gamertime/compare/v0.3.1...v0.3.2) (2026-10-07)
 
 
