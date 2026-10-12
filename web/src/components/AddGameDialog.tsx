@@ -51,7 +51,10 @@ export function AddGameDialog({ open, onClose }: Props) {
     setSelected(null);
     setSearching(true);
     try {
-      setSelected(await getBggDetail(r.bggId));
+      const detail = await getBggDetail(r.bggId);
+      // BGG search matches alternate (e.g. localized) names; keep the one the user clicked
+      // instead of the detail's primary name.
+      setSelected({ ...detail, name: r.name || detail.name });
     } finally {
       setSearching(false);
     }
