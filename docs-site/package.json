@@ -27,6 +27,12 @@
     "starlight-llms-txt": "^0.11.0"
   },
   "overrides": {
-    "sharp": "^0.35.1"
+    "sharp": "^0.35.1",
+    "postcss-nested": {
+      "postcss-selector-parser": "^7.1.6"
+    },
+    "mermaid": {
+      "katex": "^0.18.2"
+    }
   }
 }
