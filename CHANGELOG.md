@@ -8,6 +8,8 @@
 * **deps:** patch Dependabot security alerts ([4605215](https://github.com/Strandgaard96/mc-gamertime/commit/46052155e890933efb4178a91cde309183060874))
 * **deps:** patch Dependabot security alerts ([8ed027b](https://github.com/Strandgaard96/mc-gamertime/commit/8ed027b3c4ca9413d48fc0342fa163de6abaf892))
 * **deps:** regenerate docs-site lockfile with npm 10 ([355ff80](https://github.com/Strandgaard96/mc-gamertime/commit/355ff80d3410bfb7e5cbc0bac03e23b141493998))
+* **web:** keep searched BGG alternate name when adding a game ([03b5e9e](https://github.com/Strandgaard96/mc-gamertime/commit/03b5e9eba0b58b619fff2252d861cb7debbfc614))
+* **web:** keep searched BGG alternate name when adding a game ([d4212f2](https://github.com/Strandgaard96/mc-gamertime/commit/d4212f290679a4093eda89db2fab5ca848d9dc4f)), closes [#73](https://github.com/Strandgaard96/mc-gamertime/issues/73)
 
 ## [0.3.2](https://github.com/Strandgaard96/mc-gamertime/compare/v0.3.1...v0.3.2) (2026-10-07)
 
