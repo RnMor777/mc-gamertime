@@ -204,6 +204,17 @@ export default function GameDetailPage() {
           </div>
         )}
 
+        {game.description && (
+          <section aria-labelledby="game-description-heading">
+            <h2 id="game-description-heading" className="text-lg font-display font-semibold mb-3">
+              About this game
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+              {game.description}
+            </p>
+          </section>
+        )}
+
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-display font-semibold">Stats</h2>

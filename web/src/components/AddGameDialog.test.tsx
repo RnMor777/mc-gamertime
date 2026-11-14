@@ -33,13 +33,18 @@ beforeEach(() => {
   HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
     this.removeAttribute("open");
   };
-  vi.mocked(api.getBggDetail).mockResolvedValue({ bggId: 13, name: "CATAN", yearPublished: 1995 });
+  vi.mocked(api.getBggDetail).mockResolvedValue({
+    bggId: 13,
+    name: "CATAN",
+    yearPublished: 1995,
+    description: "Trade, build, and settle the island of Catan.",
+  });
   vi.mocked(api.addGame).mockResolvedValue({} as any);
 });
 
 describe("AddGameDialog", () => {
   // BGG search matches alternate names; the user expects the name they clicked, not the primary.
-  it("saves the alternate name the user searched for", async () => {
+  it("saves the alternate name and BGG description", async () => {
     vi.mocked(api.searchBgg).mockResolvedValue([
       { bggId: 13, name: "Die Siedler von Catan", yearPublished: 1995 },
     ]);
@@ -48,7 +53,11 @@ describe("AddGameDialog", () => {
 
     await waitFor(() =>
       expect(api.addGame).toHaveBeenCalledWith(
-        expect.objectContaining({ bggId: 13, name: "Die Siedler von Catan" }),
+        expect.objectContaining({
+          bggId: 13,
+          name: "Die Siedler von Catan",
+          description: "Trade, build, and settle the island of Catan.",
+        }),
       ),
     );
   });

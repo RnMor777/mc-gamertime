@@ -67,6 +67,7 @@ export function AddGameDialog({ open, onClose }: Props) {
       await addGame({
         name: selected.name,
         bggId: selected.bggId,
+        description: selected.description,
         imageUrl: selected.imageUrl,
         minPlayers: selected.minPlayers,
         maxPlayers: selected.maxPlayers,

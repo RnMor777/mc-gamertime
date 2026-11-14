@@ -11,6 +11,7 @@ export interface Game {
   pk: string;
   name: string;
   bggId?: number;
+  description?: string;
   imageUrl?: string;
   minPlayers?: number;
   maxPlayers?: number;
@@ -86,6 +87,7 @@ export interface BggSearchResult {
 export interface BggGameDetail {
   bggId: number;
   name: string;
+  description?: string;
   yearPublished?: number;
   imageUrl?: string;
   minPlayers?: number;

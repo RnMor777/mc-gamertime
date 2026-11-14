@@ -85,6 +85,7 @@ class AddGameBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
     bggId: int | None = None
+    description: str | None = None
     imageUrl: str | None = None
     minPlayers: int | None = None
     maxPlayers: int | None = None
@@ -100,6 +101,7 @@ class UpdateGameBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str | None = None
     bggId: int | None = None
+    description: str | None = None
     imageUrl: str | None = None
     minPlayers: int | None = None
     maxPlayers: int | None = None
