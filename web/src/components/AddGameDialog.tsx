@@ -23,6 +23,7 @@ export function AddGameDialog({ open, onClose }: Props) {
   const [tags, setTags] = useState("");
   const [mode, setMode] = useState<"search" | "manual">("search");
   const [manualName, setManualName] = useState("");
+  const [description, setDescription] = useState("");
   const [minPlayers, setMinPlayers] = useState("");
   const [maxPlayers, setMaxPlayers] = useState("");
   const [playTime, setPlayTime] = useState("");
@@ -92,6 +93,7 @@ export function AddGameDialog({ open, onClose }: Props) {
     try {
       await addGame({
         name: manualName.trim(),
+        description: description.trim() || undefined,
         imageUrl: manualImageUrl,
         minPlayers: minPlayers ? Number(minPlayers) : undefined,
         maxPlayers: maxPlayers ? Number(maxPlayers) : undefined,
@@ -117,6 +119,7 @@ export function AddGameDialog({ open, onClose }: Props) {
     setTags("");
     setMode("search");
     setManualName("");
+    setDescription("");
     setMinPlayers("");
     setMaxPlayers("");
     setPlayTime("");
@@ -147,6 +150,8 @@ export function AddGameDialog({ open, onClose }: Props) {
         <ManualGameForm
           name={manualName}
           onNameChange={setManualName}
+          description={description}
+          onDescriptionChange={setDescription}
           minPlayers={minPlayers}
           onMinPlayersChange={setMinPlayers}
           maxPlayers={maxPlayers}
@@ -243,6 +248,8 @@ export function AddGameDialog({ open, onClose }: Props) {
 interface ManualGameFormProps {
   name: string;
   onNameChange: (v: string) => void;
+  description: string;
+  onDescriptionChange: (v: string) => void;
   minPlayers: string;
   onMinPlayersChange: (v: string) => void;
   maxPlayers: string;
@@ -265,6 +272,8 @@ interface ManualGameFormProps {
 function ManualGameForm({
   name,
   onNameChange,
+  description,
+  onDescriptionChange,
   minPlayers,
   onMinPlayersChange,
   maxPlayers,
@@ -299,12 +308,27 @@ function ManualGameForm({
         />
       </div>
       <div>
-        <label className="text-sm font-medium">Name</label>
+        <label className="text-sm font-medium" htmlFor="manual-game-name">
+          Name
+        </label>
         <Input
+          id="manual-game-name"
           className="mt-1"
           value={name}
           onChange={(e) => onNameChange(e.target.value)}
           placeholder="Game name"
+        />
+      </div>
+      <div>
+        <label className="text-sm font-medium" htmlFor="manual-game-description">
+          Description (optional)
+        </label>
+        <textarea
+          id="manual-game-description"
+          className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px] resize-y"
+          value={description}
+          onChange={(e) => onDescriptionChange(e.target.value)}
+          placeholder="Describe the game…"
         />
       </div>
       <div className="grid grid-cols-2 gap-2">

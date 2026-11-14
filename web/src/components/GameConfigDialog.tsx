@@ -25,6 +25,7 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
   const [trackTurnOrder, setTrackTurnOrder] = useState(false);
   const [error, setError] = useState("");
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [minPlayers, setMinPlayers] = useState("");
   const [maxPlayers, setMaxPlayers] = useState("");
   const [playTime, setPlayTime] = useState("");
@@ -43,6 +44,7 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
     );
     setTrackTurnOrder(game.trackTurnOrder ?? false);
     setName(game.name);
+    setDescription(game.description ?? "");
     setMinPlayers(game.minPlayers?.toString() ?? "");
     setMaxPlayers(game.maxPlayers?.toString() ?? "");
     setPlayTime(game.playTime?.toString() ?? "");
@@ -84,6 +86,7 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
       id: idFromPk(game.pk),
       data: {
         name: name.trim(),
+        description: description.trim(),
         imageUrl: imageUrl ?? null,
         minPlayers: minPlayers ? Number(minPlayers) : null,
         maxPlayers: maxPlayers ? Number(maxPlayers) : null,
@@ -118,8 +121,27 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
           />
         </div>
         <div>
-          <label className="text-sm font-medium">Name</label>
-          <Input className="mt-1" value={name} onChange={(e) => setName(e.target.value)} />
+          <label className="text-sm font-medium" htmlFor="configure-game-name">
+            Name
+          </label>
+          <Input
+            id="configure-game-name"
+            className="mt-1"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium" htmlFor="configure-game-description">
+            Description
+          </label>
+          <textarea
+            id="configure-game-description"
+            className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px] resize-y"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Describe the game…"
+          />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Input
