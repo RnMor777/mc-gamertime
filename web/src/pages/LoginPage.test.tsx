@@ -9,12 +9,12 @@ import LoginPage from "./LoginPage";
 
 vi.mock("../lib/api");
 
-function renderLoginPage() {
+function renderLoginPage(initialEntries: string[] = ["/login"]) {
   // LoginPage reads the instance display name through TanStack Query.
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={initialEntries}>
         <AuthProvider>
           <LoginPage />
         </AuthProvider>
@@ -25,6 +25,11 @@ function renderLoginPage() {
 
 beforeEach(() => {
   vi.mocked(api.getCurrentUser).mockRejectedValue(new Error("not logged in"));
+  vi.mocked(api.getAuthConfig).mockResolvedValue({
+    oidcEnabled: false,
+    disableLocalAuth: false,
+    oidcButtonLabel: "Sign in with SSO",
+  });
 });
 
 describe("LoginPage", () => {
@@ -84,5 +89,46 @@ describe("LoginPage", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
     expect(await screen.findByText("Invalid username or password")).toBeInTheDocument();
+  });
+
+  it("shows SSO button when oidc is enabled alongside local auth", async () => {
+    vi.mocked(api.getAuthConfig).mockResolvedValue({
+      oidcEnabled: true,
+      disableLocalAuth: false,
+      oidcButtonLabel: "Single Sign-On",
+    });
+
+    renderLoginPage();
+
+    expect(await screen.findByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Single Sign-On" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Single Sign-On" })).toHaveAttribute(
+      "href",
+      "/api/auth/oidc/login",
+    );
+  });
+
+  it("hides local auth form and shows only SSO button when disableLocalAuth is true", async () => {
+    vi.mocked(api.getAuthConfig).mockResolvedValue({
+      oidcEnabled: true,
+      disableLocalAuth: true,
+      oidcButtonLabel: "Sign in with Google",
+    });
+
+    renderLoginPage();
+
+    expect(await screen.findByRole("link", { name: "Sign in with Google" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/forgot your password/i)).not.toBeInTheDocument();
+  });
+
+  it("displays SSO error alert when error query parameter is present", async () => {
+    renderLoginPage(["/login?error=access_denied"]);
+
+    expect(
+      await screen.findByText("Sign in was cancelled or access was denied."),
+    ).toBeInTheDocument();
   });
 });

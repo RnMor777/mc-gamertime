@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { PageTransition } from "../components/PageTransition";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { useAuthConfig } from "../hooks/useAuthConfig";
 import { useDisplayName } from "../hooks/useSettings";
 import { useAuth } from "../lib/AuthContext";
 import { checkHealth, login, type RateLimitError } from "../lib/api";
@@ -18,6 +19,17 @@ export default function LoginPage() {
   const displayName = useDisplayName();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { data: authConfig } = useAuthConfig();
+
+  const oidcEnabled = authConfig?.oidcEnabled ?? false;
+  const disableLocalAuth = authConfig?.disableLocalAuth ?? false;
+  const oidcButtonLabel = authConfig?.oidcButtonLabel || "Sign in with SSO";
+
+  const redirectParam = searchParams.get("redirect");
+  const errorParam = searchParams.get("error");
+  const oidcLoginUrl = redirectParam
+    ? `/api/auth/oidc/login?redirect=${encodeURIComponent(redirectParam)}`
+    : "/api/auth/oidc/login";
 
   useEffect(() => {
     const key = "_expiredRedirect";
@@ -66,46 +78,85 @@ export default function LoginPage() {
             </div>
             <p className="text-muted-foreground mt-2">Sign in to continue</p>
           </div>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label htmlFor="username" className="text-sm font-medium">
-                Username
-              </label>
-              <Input
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                required
-              />
+
+          {errorParam && (
+            <div
+              role="alert"
+              className="p-3 text-sm text-destructive bg-destructive/10 rounded-md text-center"
+            >
+              {errorParam === "access_denied"
+                ? "Sign in was cancelled or access was denied."
+                : "Single Sign-On failed — please try again."}
             </div>
-            <div className="space-y-1.5">
-              <label htmlFor="password" className="text-sm font-medium">
-                Password
-              </label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-              />
+          )}
+
+          {disableLocalAuth ? (
+            <div className="space-y-4">
+              <Button asChild className="w-full" size="lg">
+                <a href={oidcLoginUrl}>{oidcButtonLabel}</a>
+              </Button>
             </div>
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
+          ) : (
+            <>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label htmlFor="username" className="text-sm font-medium">
+                    Username
+                  </label>
+                  <Input
+                    id="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    autoComplete="username"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="password" className="text-sm font-medium">
+                    Password
+                  </label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                </div>
+                {error && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {error}
+                  </p>
+                )}
+                <Button type="submit" className="w-full" isLoading={loading}>
+                  Sign in
+                </Button>
+              </form>
+
+              {oidcEnabled && (
+                <>
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-border" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">Or</span>
+                    </div>
+                  </div>
+                  <Button asChild variant="outline" className="w-full">
+                    <a href={oidcLoginUrl}>{oidcButtonLabel}</a>
+                  </Button>
+                </>
+              )}
+
+              <p className="text-sm text-center">
+                <Link to="/forgot-password" className="text-primary hover:underline">
+                  Forgot your password?
+                </Link>
               </p>
-            )}
-            <Button type="submit" className="w-full" isLoading={loading}>
-              Sign in
-            </Button>
-          </form>
-          <p className="text-sm text-center">
-            <Link to="/forgot-password" className="text-primary hover:underline">
-              Forgot your password?
-            </Link>
-          </p>
+            </>
+          )}
         </div>
       </div>
     </PageTransition>

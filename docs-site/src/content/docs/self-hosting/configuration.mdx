@@ -155,6 +155,37 @@ CORS_ALLOWED_ORIGINS=https://games.example.com,https://app.example.com
 Session cookies are sent with these requests, so only list origins you control.
 A wildcard (`*`) is rejected — it cannot be combined with credentialed requests.
 
+## OpenID Connect (OIDC) Single Sign-On <Badge text="optional" variant="note" />
+
+You can integrate your instance with any OpenID Connect (OIDC) provider, such as Authentik, Keycloak, Google, Okta, or Authelia.
+
+To enable OIDC SSO, configure the provider in `.env`:
+
+```bash
+OIDC_ENABLED=true
+OIDC_ISSUER_URL=https://auth.example.com
+OIDC_CLIENT_ID=my-client-id
+OIDC_CLIENT_SECRET=my-client-secret
+```
+
+Optional settings:
+- `OIDC_SCOPES`: space-separated scopes to request (defaults to `openid email profile`).
+- `OIDC_BUTTON_LABEL`: text shown on the sign-in button (defaults to `Sign in with SSO`).
+- `OIDC_DEFAULT_ROLE`: default role for new SSO users (`readonly` or `admin`, defaults to `readonly`). On a fresh instance with no existing users, the first user to log in always receives `admin`.
+- `OIDC_ADMIN_GROUP`: group/role claim value that grants the `admin` role.
+- `OIDC_ADMIN_EMAILS`: comma-separated email addresses that automatically receive the `admin` role.
+- `OIDC_REDIRECT_URI`: callback URL override (defaults to `${APP_BASE_URL}/api/auth/oidc/callback`).
+
+### Disabling local authentication
+
+To require all users to authenticate via your OIDC provider, set:
+
+```bash
+DISABLE_LOCAL_AUTH=true
+```
+
+When enabled, local username and password logins (`POST /api/auth/login`) and password resets are disabled, and the sign-in screen only displays the SSO option.
+
 ## Rotating the JWT secret
 
 If you suspect the JWT secret has leaked (e.g. a stolen backup, a compromised host), rotate it to invalidate every existing session:

@@ -128,6 +128,12 @@ export interface StatsResponse {
   gameStats: GameStat[];
 }
 
+export interface AuthConfig {
+  oidcEnabled: boolean;
+  disableLocalAuth: boolean;
+  oidcButtonLabel: string;
+}
+
 export interface AuthUser {
   sub: string;
   role: "admin" | "readonly";

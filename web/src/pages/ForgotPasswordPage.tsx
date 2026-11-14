@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { PageTransition } from "../components/PageTransition";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { useAuthConfig } from "../hooks/useAuthConfig";
 import { useDisplayName } from "../hooks/useSettings";
 import { forgotPassword } from "../lib/api";
 
@@ -13,6 +14,8 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const displayName = useDisplayName();
+  const { data: authConfig } = useAuthConfig();
+  const disableLocalAuth = authConfig?.disableLocalAuth ?? false;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -38,7 +41,16 @@ export default function ForgotPasswordPage() {
             </div>
             <p className="text-muted-foreground mt-2">Reset your password</p>
           </div>
-          {submitted ? (
+          {disableLocalAuth ? (
+            <div className="space-y-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                Local authentication is disabled. Password reset is not available.
+              </p>
+              <Button asChild className="w-full">
+                <Link to="/login">Back to sign in</Link>
+              </Button>
+            </div>
+          ) : submitted ? (
             <p className="text-sm text-center text-muted-foreground">
               If that account exists and has an email on file, a reset link is on its way. Check the
               server logs if no SMTP server is configured.
@@ -57,11 +69,13 @@ export default function ForgotPasswordPage() {
               </Button>
             </form>
           )}
-          <p className="text-sm text-center">
-            <Link to="/login" className="text-primary hover:underline">
-              Back to sign in
-            </Link>
-          </p>
+          {!disableLocalAuth && (
+            <p className="text-sm text-center">
+              <Link to="/login" className="text-primary hover:underline">
+                Back to sign in
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     </PageTransition>

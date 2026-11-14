@@ -139,6 +139,10 @@ def _bootstrap_admin_user() -> None:
         raise RuntimeError("ADMIN_USERNAME and ADMIN_PASSWORD must both be set, or neither")
     if not admin_username:
         if not users_lib.list_users():
+            from lib.oidc import is_local_auth_disabled, is_oidc_enabled
+
+            if is_local_auth_disabled() and is_oidc_enabled():
+                return
             raise RuntimeError(
                 "No users found. Set ADMIN_USERNAME and ADMIN_PASSWORD in .env to bootstrap the first admin."
             )

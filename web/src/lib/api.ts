@@ -1,6 +1,7 @@
 import { navigation } from "./navigation";
 import type {
   AdminSettings,
+  AuthConfig,
   AuthUser,
   BggGameDetail,
   BggSearchResult,
@@ -284,6 +285,10 @@ export async function checkHealth(): Promise<boolean> {
 }
 
 // Auth
+export function getAuthConfig(): Promise<AuthConfig> {
+  return apiFetch("/auth/config");
+}
+
 export function login(username: string, password: string): Promise<AuthUser> {
   return apiFetch("/auth/login", {
     method: "POST",

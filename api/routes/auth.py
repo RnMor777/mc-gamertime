@@ -1,11 +1,14 @@
+import logging
 import os
 import time
+import urllib.parse
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
+from starlette.responses import RedirectResponse
 
 from lib.auth import (
     AuthUser,
@@ -19,8 +22,17 @@ from lib.auth import (
 from lib.db.settings import get_settings
 from lib.db.users import get_user, record_failed_login, set_user_fields
 from lib.mailer import send_email
+from lib.oidc import (
+    create_authorization_url,
+    get_oidc_button_label,
+    is_local_auth_disabled,
+    is_oidc_enabled,
+    process_oidc_callback,
+)
 from lib.rate_limit import client_ip, limiter
 from lib.security_log import log_security_event
+
+_log = logging.getLogger("auth")
 
 router = APIRouter()
 
@@ -75,9 +87,103 @@ def _cookie_is_secure(request: Request) -> bool:
     return request.url.scheme == "https"
 
 
+@router.get("/config")
+def auth_config():
+    return {
+        "oidcEnabled": is_oidc_enabled(),
+        "disableLocalAuth": is_local_auth_disabled(),
+        "oidcButtonLabel": get_oidc_button_label(),
+    }
+
+
+@router.get("/oidc/login")
+@limiter.limit("20/minute")
+def oidc_login(request: Request, response: Response, redirect: str | None = None):
+    if not is_oidc_enabled():
+        raise HTTPException(status_code=404, detail="OIDC SSO is not enabled")
+    auth_url, state_cookie = create_authorization_url(request)
+    redirect_resp = RedirectResponse(auth_url, status_code=303)
+    redirect_resp.set_cookie(
+        key="oidc_state",
+        value=state_cookie,
+        httponly=True,
+        secure=_cookie_is_secure(request),
+        samesite="lax",
+        path="/",
+        max_age=600,
+    )
+    return redirect_resp
+
+
+@router.get("/oidc/callback")
+@limiter.limit("20/minute")
+def oidc_callback(
+    request: Request,
+    response: Response,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+):
+    if not is_oidc_enabled():
+        raise HTTPException(status_code=404, detail="OIDC SSO is not enabled")
+    if error:
+        _log.warning("OIDC provider returned error: %s (%s)", error, error_description)
+        redirect_resp = RedirectResponse(
+            f"/login?error={urllib.parse.quote(error)}", status_code=303
+        )
+        redirect_resp.delete_cookie(
+            key="oidc_state", path="/", secure=_cookie_is_secure(request), samesite="lax"
+        )
+        return redirect_resp
+
+    if not code or not state:
+        redirect_resp = RedirectResponse("/login?error=invalid_request", status_code=303)
+        redirect_resp.delete_cookie(
+            key="oidc_state", path="/", secure=_cookie_is_secure(request), samesite="lax"
+        )
+        return redirect_resp
+
+    try:
+        auth_user, target_redirect = process_oidc_callback(request, code, state)
+    except HTTPException as exc:
+        redirect_resp = RedirectResponse(
+            f"/login?error={urllib.parse.quote(str(exc.detail))}", status_code=303
+        )
+        redirect_resp.delete_cookie(
+            key="oidc_state", path="/", secure=_cookie_is_secure(request), samesite="lax"
+        )
+        return redirect_resp
+    except Exception as exc:
+        _log.exception("Unexpected error in OIDC callback: %s", exc)
+        redirect_resp = RedirectResponse("/login?error=sso_failed", status_code=303)
+        redirect_resp.delete_cookie(
+            key="oidc_state", path="/", secure=_cookie_is_secure(request), samesite="lax"
+        )
+        return redirect_resp
+
+    token = sign_token(auth_user)
+    redirect_resp = RedirectResponse(url=target_redirect, status_code=303)
+    redirect_resp.set_cookie(
+        key="token",
+        value=token,
+        httponly=True,
+        secure=_cookie_is_secure(request),
+        samesite="strict",
+        path="/",
+        max_age=60 * 60 * 24 * 7,
+    )
+    redirect_resp.delete_cookie(
+        key="oidc_state", path="/", secure=_cookie_is_secure(request), samesite="lax"
+    )
+    return redirect_resp
+
+
 @router.post("/login")
 @limiter.limit("5/minute")
 def login(request: Request, body: LoginBody, response: Response):
+    if is_local_auth_disabled():
+        raise HTTPException(status_code=403, detail="Local authentication is disabled")
     user = get_user(body.username)
     now = datetime.now(UTC)
 
@@ -178,6 +284,8 @@ class ResetPasswordBody(BaseModel):
 @router.post("/forgot-password", status_code=204)
 @limiter.limit("5/minute")
 def forgot_password(request: Request, response: Response, body: ForgotPasswordBody):
+    if is_local_auth_disabled():
+        raise HTTPException(status_code=403, detail="Local authentication is disabled")
     user = get_user(body.username)
     if user is not None and user.get("email"):
         token = sign_reset_token(user["pk"], int(user.get("tokenVersion", 0)))
@@ -209,6 +317,8 @@ def forgot_password(request: Request, response: Response, body: ForgotPasswordBo
 @router.post("/reset-password", status_code=204)
 @limiter.limit("5/minute")
 def reset_password(request: Request, response: Response, body: ResetPasswordBody):
+    if is_local_auth_disabled():
+        raise HTTPException(status_code=403, detail="Local authentication is disabled")
     import jwt
 
     try:

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { PageTransition } from "../components/PageTransition";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { useAuthConfig } from "../hooks/useAuthConfig";
 import { useDisplayName } from "../hooks/useSettings";
 import { resetPassword } from "../lib/api";
 
@@ -17,6 +18,8 @@ export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const token = searchParams.get("token") ?? "";
   const displayName = useDisplayName();
+  const { data: authConfig } = useAuthConfig();
+  const disableLocalAuth = authConfig?.disableLocalAuth ?? false;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -44,7 +47,16 @@ export default function ResetPasswordPage() {
             </div>
             <p className="text-muted-foreground mt-2">Choose a new password</p>
           </div>
-          {token ? (
+          {disableLocalAuth ? (
+            <div className="space-y-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                Local authentication is disabled. Password reset is not available.
+              </p>
+              <Button asChild className="w-full">
+                <Link to="/login">Back to sign in</Link>
+              </Button>
+            </div>
+          ) : token ? (
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
                 type="password"
@@ -65,11 +77,13 @@ export default function ResetPasswordPage() {
               This reset link is missing or invalid. Request a new one.
             </p>
           )}
-          <p className="text-sm text-center">
-            <Link to="/forgot-password" className="text-primary hover:underline">
-              Back to forgot password
-            </Link>
-          </p>
+          {!disableLocalAuth && (
+            <p className="text-sm text-center">
+              <Link to="/forgot-password" className="text-primary hover:underline">
+                Back to forgot password
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     </PageTransition>
