@@ -2,10 +2,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { deleteGame, getGames, updateGame } from "../lib/api";
 import { useAuth } from "../lib/AuthContext";
+import { useActiveLibraryId } from "./useLibraries";
 
-export function useGames() {
+export function useGames(libraryIdOverride?: string) {
   const { user } = useAuth();
-  return useQuery({ queryKey: ["games"], queryFn: getGames, enabled: !!user });
+  const [storedLibraryId] = useActiveLibraryId();
+  const effectiveLibraryId = libraryIdOverride ?? storedLibraryId ?? undefined;
+  return useQuery({
+    queryKey: effectiveLibraryId ? ["games", effectiveLibraryId] : ["games"],
+    queryFn: () => (effectiveLibraryId ? getGames(effectiveLibraryId) : getGames()),
+    enabled: !!user,
+  });
 }
 
 export function useDeleteGame() {
@@ -14,6 +21,7 @@ export function useDeleteGame() {
     mutationFn: (id: string) => deleteGame(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["games"] });
+      qc.invalidateQueries({ queryKey: ["libraries"] });
       toast.success("Game removed");
     },
     onError: (err) =>

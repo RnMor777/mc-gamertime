@@ -10,6 +10,8 @@ export interface PlayerVariableInput {
 export interface Game {
   pk: string;
   name: string;
+  libraryId?: string;
+  ownerId?: string;
   bggId?: number;
   description?: string;
   imageUrl?: string;
@@ -136,9 +138,30 @@ export interface AuthConfig {
   oidcButtonLabel: string;
 }
 
+export type UserRole = "admin" | "normal";
+export type LibraryRole = "owner" | "editor" | "readonly" | "viewer";
+
+export interface LibraryMember {
+  username: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  role: LibraryRole;
+}
+
+export interface Library {
+  id: string;
+  name: string;
+  isPersonal: boolean;
+  ownerId: string;
+  myRole: LibraryRole;
+  members: LibraryMember[];
+  gameCount: number;
+  createdAt?: string;
+}
+
 export interface AuthUser {
   sub: string;
-  role: "admin" | "readonly";
+  role: UserRole;
   displayName: string;
 }
 
@@ -146,7 +169,7 @@ export interface UserSummary {
   username: string;
   avatarUrl?: string;
   displayName: string;
-  role: "admin" | "readonly";
+  role: UserRole;
 }
 
 export interface PublicSettings {

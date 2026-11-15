@@ -7,6 +7,8 @@ import type {
   BggSearchResult,
   CommentItem,
   Game,
+  Library,
+  LibraryRole,
   NotificationsResponse,
   PhotoItem,
   Player,
@@ -20,6 +22,7 @@ import type {
   RecommendationDetail,
   Result,
   StatsResponse,
+  UserRole,
   UserSummary,
 } from "./types";
 
@@ -84,8 +87,71 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // Games
-export function getGames(): Promise<Game[]> {
-  return apiFetch("/games");
+export function getGames(libraryId?: string): Promise<Game[]> {
+  return apiFetch(libraryId ? `/games?libraryId=${encodeURIComponent(libraryId)}` : "/games");
+}
+
+// Libraries
+export function getLibraries(): Promise<Library[]> {
+  return apiFetch("/libraries");
+}
+
+export function createLibrary(name: string): Promise<Library> {
+  return apiFetch("/libraries", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function updateLibrary(id: string, name: string): Promise<Library> {
+  return apiFetch(`/libraries/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteLibrary(id: string): Promise<void> {
+  return apiFetch(`/libraries/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+export function addLibraryMember(
+  libraryId: string,
+  username: string,
+  role: LibraryRole,
+): Promise<Library> {
+  return apiFetch(`/libraries/${encodeURIComponent(libraryId)}/members`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, role }),
+  });
+}
+
+export function updateLibraryMemberRole(
+  libraryId: string,
+  username: string,
+  role: LibraryRole,
+): Promise<Library> {
+  return apiFetch(
+    `/libraries/${encodeURIComponent(libraryId)}/members/${encodeURIComponent(username)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    },
+  );
+}
+
+export function removeLibraryMember(libraryId: string, username: string): Promise<void> {
+  return apiFetch(
+    `/libraries/${encodeURIComponent(libraryId)}/members/${encodeURIComponent(username)}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 export function addGame(game: Omit<Game, "pk" | "createdAt">): Promise<Game> {
@@ -332,7 +398,7 @@ export function createUser(data: {
   username: string;
   displayName: string;
   password: string;
-  role: "admin" | "readonly";
+  role: UserRole;
 }): Promise<UserSummary> {
   return apiFetch("/users", {
     method: "POST",
@@ -343,7 +409,7 @@ export function createUser(data: {
 
 export function updateUser(
   username: string,
-  data: { displayName?: string; role?: "admin" | "readonly"; password?: string },
+  data: { displayName?: string; role?: UserRole; password?: string },
 ): Promise<UserSummary> {
   return apiFetch(`/users/${username}`, {
     method: "PUT",

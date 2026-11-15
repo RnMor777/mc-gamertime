@@ -38,7 +38,7 @@ export default function PrivacyPolicyPage() {
         </p>
         <ul>
           <li>Your username, display name, and a bcrypt-hashed (never plaintext) password</li>
-          <li>Your role (admin or readonly), used to control access to features</li>
+          <li>Your role (admin or normal), used to control access to features</li>
           <li>An optional profile avatar image, if you or an administrator upload one</li>
           <li>
             An optional email address, if an administrator sets one — used only to send

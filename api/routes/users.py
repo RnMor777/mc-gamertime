@@ -11,6 +11,11 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel, Field, field_validator
 
 from lib.auth import AuthUser, require_admin, require_auth, validate_password_length
+from lib.db.libraries import (
+    create_personal_library_for_user,
+    delete_library,
+    get_personal_library_for_user,
+)
 from lib.db.results import list_results
 from lib.db.users import (
     delete_user,
@@ -39,7 +44,7 @@ class CreateUserBody(BaseModel):
     username: str
     displayName: str
     password: str = Field(min_length=12)
-    role: Literal["admin", "readonly"]
+    role: Literal["admin", "normal"]
 
     @field_validator("password")
     @classmethod
@@ -88,12 +93,14 @@ def create_user(body: CreateUserBody, _: Annotated[AuthUser, Depends(require_adm
     if get_user(body.username):
         raise HTTPException(status_code=409, detail="Username already taken")
 
+    personal_lib = create_personal_library_for_user(body.username, body.displayName)
     password_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt(rounds=12)).decode()
     user = {
         "pk": body.username,
         "displayName": body.displayName,
         "passwordHash": password_hash,
         "role": body.role,
+        "personalLibraryId": personal_lib["id"],
         "createdAt": datetime.now(UTC).isoformat(),
     }
     put_user(user)
@@ -101,12 +108,13 @@ def create_user(body: CreateUserBody, _: Annotated[AuthUser, Depends(require_adm
         "username": body.username,
         "displayName": body.displayName,
         "role": body.role,
+        "personalLibraryId": personal_lib["id"],
     }
 
 
 class UpdateUserBody(BaseModel):
     displayName: str | None = None
-    role: Literal["admin", "readonly"] | None = None
+    role: Literal["admin", "normal"] | None = None
     password: str | None = None
 
     @field_validator("displayName")
@@ -261,6 +269,10 @@ def delete_user_route(
             status_code=409,
             detail=f"Cannot delete: user appears in {result_refs} result(s). Delete those first.",
         )
+
+    personal_lib = get_personal_library_for_user(username)
+    if personal_lib:
+        delete_library(personal_lib["id"])
 
     delete_user(username)
 

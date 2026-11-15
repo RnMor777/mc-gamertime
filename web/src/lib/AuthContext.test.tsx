@@ -41,7 +41,7 @@ async function renderSignedIn() {
 beforeEach(() => {
   vi.mocked(api.getCurrentUser).mockResolvedValue({
     sub: "alice",
-    role: "readonly",
+    role: "normal",
     displayName: "Alice",
   });
   vi.mocked(api.logout).mockResolvedValue(undefined);

@@ -2,6 +2,7 @@ import { Check, Dices } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { GameCard } from "../components/GameCard";
+import { LibraryBar } from "../components/LibraryBar";
 import { PageTransition } from "../components/PageTransition";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
@@ -110,10 +111,12 @@ export default function Picker() {
   return (
     <PageTransition>
       <div className="max-w-xl mx-auto p-4 md:p-6">
-        <h1 className="text-2xl font-display font-bold mb-6 flex items-center gap-2">
+        <h1 className="text-2xl font-display font-bold mb-4 flex items-center gap-2">
           <Dices size={24} className="text-primary" />
           Game Picker
         </h1>
+
+        <LibraryBar compact />
 
         <div className="space-y-4 mb-6">
           <FilterButtons

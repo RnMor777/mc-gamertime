@@ -38,7 +38,7 @@ def test_create_user_success(authed_client, fake_db):
             "username": "bob",
             "displayName": "Bob",
             "password": "secretpass123",
-            "role": "readonly",
+            "role": "normal",
         },
         headers=ORIGIN,
     )
@@ -46,7 +46,8 @@ def test_create_user_success(authed_client, fake_db):
     data = resp.json()
     assert data["username"] == "bob"
     assert data["displayName"] == "Bob"
-    assert data["role"] == "readonly"
+    assert data["role"] == "normal"
+    assert "personalLibraryId" in data
     assert "passwordHash" not in data
     assert fake_db["users"].get_item(Key={"pk": "bob"}).get("Item") is not None
 
@@ -56,7 +57,7 @@ def test_create_user_duplicate_returns_409(authed_client, fake_db):
         {
             "pk": "bob",
             "displayName": "Bob",
-            "role": "readonly",
+            "role": "normal",
             "createdAt": "2026-01-01T00:00:00Z",
             "passwordHash": "x",
         }
@@ -68,7 +69,7 @@ def test_create_user_duplicate_returns_409(authed_client, fake_db):
             "username": "bob",
             "displayName": "Bob Again",
             "password": "secretpass123",
-            "role": "readonly",
+            "role": "normal",
         },
         headers=ORIGIN,
     )
@@ -79,7 +80,7 @@ def test_create_user_short_password_returns_422(authed_client):
     c = authed_client("admin")
     resp = c.post(
         "/api/users",
-        json={"username": "bob", "displayName": "Bob", "password": "short1", "role": "readonly"},
+        json={"username": "bob", "displayName": "Bob", "password": "short1", "role": "normal"},
         headers=ORIGIN,
     )
     assert resp.status_code == 422
@@ -93,7 +94,7 @@ def test_create_user_eleven_char_password_returns_422(authed_client):
             "username": "newuser",
             "displayName": "New User",
             "password": "a" * 11,
-            "role": "readonly",
+            "role": "normal",
         },
         headers=ORIGIN,
     )
@@ -108,7 +109,7 @@ def test_create_user_invalid_username_returns_422(authed_client):
             "username": "bob the builder!",
             "displayName": "Bob",
             "password": "secret123",
-            "role": "readonly",
+            "role": "normal",
         },
         headers=ORIGIN,
     )
@@ -123,7 +124,7 @@ def test_create_user_password_too_long_returns_422(authed_client):
             "username": "newuser",
             "displayName": "New User",
             "password": "a" * 1025,
-            "role": "readonly",
+            "role": "normal",
         },
         headers=ORIGIN,
     )

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, field_validator
 from ulid import ULID
 
-from lib.auth import AuthUser, require_admin, require_auth
+from lib.auth import AuthUser, require_auth, require_write
 from lib.bgg import BggNotFoundError, bgg_detail, bgg_search
 from lib.db.games import (
     GameNotFoundError,
@@ -21,6 +21,14 @@ from lib.db.games import (
     list_games,
     put_game,
     remove_favourite,
+)
+from lib.db.libraries import (
+    PERSONAL_PREFIX,
+    ensure_personal_library,
+    get_library,
+    get_user_library_role,
+    list_family_libraries,
+    resolve_library_id,
 )
 from lib.db.recs import list_recs
 from lib.db.results import list_results
@@ -84,6 +92,7 @@ def _assign_variable_ids(variables: list[dict]) -> list[dict]:
 class AddGameBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
+    libraryId: str | None = None
     bggId: int | None = None
     description: str | None = None
     imageUrl: str | None = None
@@ -113,9 +122,76 @@ class UpdateGameBody(BaseModel):
     trackTurnOrder: bool | None = None
 
 
+def _game_matches_library(
+    game: dict[str, Any], target_lib: dict[str, Any], current_user_sub: str
+) -> bool:
+    g_lib = game.get("libraryId")
+    g_owner = game.get("ownerId")
+    lib_id = target_lib["id"]
+    if g_lib == lib_id:
+        return True
+    if target_lib.get("isPersonal"):
+        owner = target_lib["ownerId"]
+        if g_lib == f"{PERSONAL_PREFIX}{owner}":
+            return True
+        if g_lib is None and g_owner == owner:
+            return True
+        return bool(owner == current_user_sub and g_lib is None and g_owner is None)
+    return False
+
+
+def _require_game_write_access(game: dict[str, Any], user: AuthUser) -> None:
+    lib_id = game.get("libraryId")
+    owner_id = game.get("ownerId")
+    if lib_id:
+        role = get_user_library_role(lib_id, user.sub, user.role)
+        if role not in ("owner", "editor"):
+            raise HTTPException(status_code=403, detail="Forbidden")
+    elif owner_id and owner_id != user.sub and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
 @router.get("")
-def list_games_route(user: Annotated[AuthUser, Depends(require_auth)]):
-    games = list_games()
+def list_games_route(
+    user: Annotated[AuthUser, Depends(require_auth)],
+    libraryId: str | None = None,
+):
+    all_games = list_games()
+    if libraryId == "all":
+        if user.role == "admin":
+            games = all_games
+        else:
+            personal_lib = ensure_personal_library(user.sub, user.displayName)
+            accessible_libs = {personal_lib["id"], f"{PERSONAL_PREFIX}{user.sub}"}
+            for lib in list_family_libraries():
+                if get_user_library_role(lib["id"], user.sub, user.role, library=lib) is not None:
+                    accessible_libs.add(lib["id"])
+            games = [
+                g
+                for g in all_games
+                if g.get("libraryId") in accessible_libs
+                or (g.get("libraryId") is None and g.get("ownerId") in (None, user.sub))
+            ]
+    else:
+        if libraryId and libraryId.startswith(PERSONAL_PREFIX):
+            owner = libraryId.removeprefix(PERSONAL_PREFIX)
+            if owner != user.sub and user.role != "admin":
+                raise HTTPException(status_code=403, detail="Forbidden")
+            target_lib_doc = ensure_personal_library(owner)
+        elif libraryId:
+            target_lib_doc = get_library(libraryId)
+            if not target_lib_doc:
+                raise HTTPException(status_code=404, detail="Library not found")
+            role = get_user_library_role(
+                target_lib_doc["id"], user.sub, user.role, library=target_lib_doc
+            )
+            if role is None:
+                raise HTTPException(status_code=403, detail="Forbidden")
+        else:
+            target_lib_doc = ensure_personal_library(user.sub, user.displayName)
+
+        games = [g for g in all_games if _game_matches_library(g, target_lib_doc, user.sub)]
+
     for game in games:
         favorites = game.pop("favorites", set())
         game["isFavorited"] = user.sub in favorites
@@ -150,7 +226,7 @@ def _call_bgg(fn: Callable[[Any], Any], arg: Any) -> Any:
 
 
 @router.post("/upload")
-def upload_game_image(body: UploadImageBody, _: Annotated[AuthUser, Depends(require_admin)]):
+def upload_game_image(body: UploadImageBody, _: Annotated[AuthUser, Depends(require_write)]):
     # Declared before /{game_id} routes to prevent path-param shadowing.
     if body.contentType not in EXT_BY_CONTENT_TYPE:
         raise HTTPException(status_code=422, detail="Unsupported content type")
@@ -161,12 +237,30 @@ def upload_game_image(body: UploadImageBody, _: Annotated[AuthUser, Depends(requ
 
 
 @router.post("", status_code=201)
-def create_game(body: AddGameBody, _: Annotated[AuthUser, Depends(require_admin)]):
-    data = body.model_dump()
+def create_game(body: AddGameBody, user: Annotated[AuthUser, Depends(require_write)]):
+    if body.libraryId and body.libraryId.startswith(PERSONAL_PREFIX):
+        owner = body.libraryId.removeprefix(PERSONAL_PREFIX)
+        if owner != user.sub and user.role != "admin":
+            raise HTTPException(status_code=403, detail="Forbidden")
+        target_lib = ensure_personal_library(owner)["id"]
+    elif body.libraryId:
+        lib_doc = get_library(body.libraryId)
+        if not lib_doc:
+            raise HTTPException(status_code=404, detail="Library not found")
+        role = get_user_library_role(lib_doc["id"], user.sub, user.role, library=lib_doc)
+        if role not in ("owner", "editor"):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        target_lib = lib_doc["id"]
+    else:
+        target_lib = resolve_library_id(None, user.sub, user.displayName)
+
+    data = body.model_dump(exclude={"libraryId"})
     data["playerVariables"] = _assign_variable_ids(data["playerVariables"])
     game = {
         "pk": str(ULID()),
         "createdAt": datetime.now(UTC).isoformat(),
+        "libraryId": target_lib,
+        "ownerId": user.sub,
         **data,
     }
     put_game(game)
@@ -175,11 +269,12 @@ def create_game(body: AddGameBody, _: Annotated[AuthUser, Depends(require_admin)
 
 @router.put("/{game_id}")
 def update_game_route(
-    game_id: str, body: UpdateGameBody, _: Annotated[AuthUser, Depends(require_admin)]
+    game_id: str, body: UpdateGameBody, user: Annotated[AuthUser, Depends(require_write)]
 ):
     existing = get_game(game_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Game not found")
+    _require_game_write_access(existing, user)
 
     updates = body.model_dump(exclude_unset=True)
     if "playerVariables" in updates and updates["playerVariables"] is None:
@@ -193,9 +288,11 @@ def update_game_route(
 
 
 @router.delete("/{game_id}", status_code=204)
-def delete_game_route(game_id: str, _: Annotated[AuthUser, Depends(require_admin)]):
-    if not get_game(game_id):
+def delete_game_route(game_id: str, user: Annotated[AuthUser, Depends(require_write)]):
+    existing = get_game(game_id)
+    if not existing:
         raise HTTPException(status_code=404, detail="Game not found")
+    _require_game_write_access(existing, user)
 
     # Block deletes that would orphan results (gameId) or recommendations (gamePk)
     result_refs = sum(1 for r in list_results() if r.get("gameId") == game_id)

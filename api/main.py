@@ -20,6 +20,7 @@ from lib.rate_limit import limiter
 from routes import (
     auth,
     games,
+    libraries,
     notifications,
     photos,
     players,
@@ -149,6 +150,9 @@ def _bootstrap_admin_user() -> None:
         return
     if users_lib.get_user(admin_username):
         return
+    from lib.db.libraries import create_personal_library_for_user
+
+    personal_lib = create_personal_library_for_user(admin_username, admin_username)
     users_lib.put_user(
         {
             "pk": admin_username,
@@ -156,6 +160,7 @@ def _bootstrap_admin_user() -> None:
             "username": admin_username,
             "displayName": admin_username,
             "role": "admin",
+            "personalLibraryId": personal_lib["id"],
             "passwordHash": bcrypt.hashpw(
                 admin_password.encode(), bcrypt.gensalt(rounds=12)
             ).decode(),
@@ -302,6 +307,7 @@ def health():
 
 app.include_router(auth.router, prefix="/api/auth")
 app.include_router(games.router, prefix="/api/games")
+app.include_router(libraries.router, prefix="/api/libraries")
 app.include_router(players.router, prefix="/api/players")
 app.include_router(posts.router, prefix="/api/posts")
 app.include_router(results.router, prefix="/api/results")

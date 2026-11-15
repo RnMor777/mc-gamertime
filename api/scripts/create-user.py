@@ -27,8 +27,8 @@ def _prompt_for_args() -> argparse.Namespace:
         display_name = input("Display name (required): ").strip()
 
     role = ""
-    while role not in ("admin", "readonly"):
-        role = input("Role [admin/readonly] (default: admin): ").strip().lower() or "admin"
+    while role not in ("admin", "normal"):
+        role = input("Role [admin/normal] (default: normal): ").strip().lower() or "normal"
 
     password = getpass.getpass("Password: ")
     confirm = getpass.getpass("Confirm password: ")
@@ -52,7 +52,7 @@ def main():
     parser = argparse.ArgumentParser(description="Create a boardsite user")
     parser.add_argument("--username")
     parser.add_argument("--display-name")
-    parser.add_argument("--role", choices=["admin", "readonly"])
+    parser.add_argument("--role", choices=["admin", "normal"])
     parser.add_argument("--password")
     parser.add_argument("--email", help="Optional — required for self-service password reset")
     parser.add_argument("--env", choices=["prod", "dev"], default="prod")
@@ -77,12 +77,14 @@ def main():
     if args.env == "dev":
         os.environ.setdefault("USERS_TABLE", "boardsite-users-dev")
 
+    from lib.db.libraries import create_personal_library_for_user
     from lib.db.users import get_user, put_user  # deferred: --env must set USERS_TABLE first
 
     if get_user(args.username):
         print(f"User '{args.username}' already exists.")
         sys.exit(1)
 
+    personal_lib = create_personal_library_for_user(args.username, args.display_name)
     hashed = bcrypt.hashpw(args.password.encode(), bcrypt.gensalt()).decode()
     now = datetime.now(UTC).isoformat()
     item = {
@@ -91,6 +93,7 @@ def main():
         "username": args.username,
         "displayName": args.display_name,
         "role": args.role,
+        "personalLibraryId": personal_lib["id"],
         "passwordHash": hashed,
     }
     if args.email:

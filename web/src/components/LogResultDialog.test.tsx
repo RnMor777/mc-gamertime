@@ -50,7 +50,7 @@ beforeEach(() => {
   vi.mocked(api.getUsers).mockResolvedValue([]);
   vi.mocked(api.getCurrentUser).mockResolvedValue({
     sub: "bob",
-    role: "readonly",
+    role: "normal",
     displayName: "Bob",
   });
   // jsdom has no HTMLDialogElement.showModal/close
@@ -77,7 +77,7 @@ function renderOpen(props: { onClose: () => void; editResult?: Result }) {
   ]);
   const users = [
     { username: "alice", displayName: "Alice", role: "admin" as const },
-    { username: "bob", displayName: "Bob", role: "readonly" as const },
+    { username: "bob", displayName: "Bob", role: "normal" as const },
   ];
   vi.mocked(api.getUsers).mockResolvedValue(users);
   vi.mocked(api.addResult).mockResolvedValue(created);

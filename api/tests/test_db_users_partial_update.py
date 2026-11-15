@@ -168,10 +168,10 @@ def test_update_user_script_revokes_sessions_on_role_change(fake_db, monkeypatch
 
     fake_db["users"].seed({"pk": "alice", "role": "admin", "displayName": "A", "tokenVersion": 0})
     script = Path(__file__).resolve().parent.parent / "scripts" / "update-user.py"
-    monkeypatch.setattr(sys, "argv", [str(script), "--username", "alice", "--role", "readonly"])
+    monkeypatch.setattr(sys, "argv", [str(script), "--username", "alice", "--role", "normal"])
     runpy.run_path(str(script), run_name="__main__")
 
     item = fake_db["users"].get_item(Key={"pk": "alice"})["Item"]
-    assert item["role"] == "readonly"
+    assert item["role"] == "normal"
     assert item["tokenVersion"] == 1
     assert "sessions revoked" in capsys.readouterr().out

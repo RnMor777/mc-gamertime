@@ -11,9 +11,10 @@ import { Skeleton } from "./ui/skeleton";
 interface Props {
   open: boolean;
   onClose: () => void;
+  libraryId?: string;
 }
 
-export function AddGameDialog({ open, onClose }: Props) {
+export function AddGameDialog({ open, onClose, libraryId }: Props) {
   const qc = useQueryClient();
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -67,6 +68,7 @@ export function AddGameDialog({ open, onClose }: Props) {
     try {
       await addGame({
         name: selected.name,
+        ...(libraryId ? { libraryId } : {}),
         bggId: selected.bggId,
         description: selected.description,
         imageUrl: selected.imageUrl,
@@ -81,6 +83,7 @@ export function AddGameDialog({ open, onClose }: Props) {
           .filter(Boolean),
       });
       qc.invalidateQueries({ queryKey: ["games"] });
+      qc.invalidateQueries({ queryKey: ["libraries"] });
       handleClose();
     } finally {
       setSaving(false);
@@ -93,6 +96,7 @@ export function AddGameDialog({ open, onClose }: Props) {
     try {
       await addGame({
         name: manualName.trim(),
+        ...(libraryId ? { libraryId } : {}),
         description: description.trim() || undefined,
         imageUrl: manualImageUrl,
         minPlayers: minPlayers ? Number(minPlayers) : undefined,
@@ -106,6 +110,7 @@ export function AddGameDialog({ open, onClose }: Props) {
           .filter(Boolean),
       });
       qc.invalidateQueries({ queryKey: ["games"] });
+      qc.invalidateQueries({ queryKey: ["libraries"] });
       handleClose();
     } finally {
       setSaving(false);

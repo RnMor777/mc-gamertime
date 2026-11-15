@@ -19,7 +19,7 @@ def main():
     parser.add_argument("--username", required=True)
     parser.add_argument("--password")
     parser.add_argument("--display-name")
-    parser.add_argument("--role", choices=["admin", "readonly"])
+    parser.add_argument("--role", choices=["admin", "normal"])
     parser.add_argument("--email", help="Optional — set/update the address for password reset")
     parser.add_argument("--env", choices=["prod", "dev"], default="prod")
     args = parser.parse_args()

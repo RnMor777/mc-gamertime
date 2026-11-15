@@ -166,7 +166,7 @@ def test_create_authorization_url(monkeypatch):
 
 def test_resolve_or_provision_user(fake_db):
     config = {
-        "default_role": "readonly",
+        "default_role": "normal",
         "admin_emails": ["lead@example.com"],
         "admin_group": None,
     }
@@ -180,17 +180,21 @@ def test_resolve_or_provision_user(fake_db):
     assert user1.role == "admin"
     assert user1.displayName == "Alice M."
 
-    # Verify user in database
+    # Verify user in database and personal library created
     db_u = get_user("alice")
     assert db_u is not None
     assert db_u["oidcSub"] == "sub-1"
+    assert db_u.get("personalLibraryId") is not None
 
-    # 2. Subsequent user gets readonly unless matching admin
+    # 2. Subsequent user gets normal unless matching admin
     user2 = resolve_or_provision_user(
         {"sub": "sub-2", "email": "bob@example.com", "name": "Bob B."}, config
     )
     assert user2.sub == "bob"
-    assert user2.role == "readonly"
+    assert user2.role == "normal"
+    db_bob = get_user("bob")
+    assert db_bob is not None
+    assert db_bob.get("personalLibraryId") != db_u.get("personalLibraryId")
 
     # 3. Subsequent user matching admin email gets admin
     user3 = resolve_or_provision_user(

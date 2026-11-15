@@ -16,6 +16,7 @@ import jwt
 from fastapi import HTTPException, Request
 
 from lib.auth import AuthUser, _get_secret
+from lib.db.libraries import create_personal_library_for_user, ensure_personal_library
 from lib.db.settings import get_settings
 from lib.db.users import get_user, list_users, put_user, set_user_fields
 
@@ -25,7 +26,7 @@ _discovery_cache: dict[str, dict[str, Any]] = {}
 
 _DEFAULT_SCOPES = "openid email profile"
 _DEFAULT_BUTTON_LABEL = "Sign in with SSO"
-_DEFAULT_ROLE = "readonly"
+_DEFAULT_ROLE = "normal"
 
 
 def is_oidc_enabled() -> bool:
@@ -61,7 +62,7 @@ def get_oidc_config() -> dict[str, Any]:
     redirect_uri = os.environ.get("OIDC_REDIRECT_URI", "").strip() or None
     button_label = get_oidc_button_label()
     default_role = os.environ.get("OIDC_DEFAULT_ROLE", "").strip().lower() or _DEFAULT_ROLE
-    if default_role not in ("admin", "readonly"):
+    if default_role not in ("admin", "normal"):
         default_role = _DEFAULT_ROLE
 
     admin_group = os.environ.get("OIDC_ADMIN_GROUP", "").strip() or None
@@ -304,6 +305,12 @@ def resolve_or_provision_user(claims: dict[str, Any], config: dict[str, Any]) ->
         if should_be_admin and matched_user.get("role") != "admin":
             updates["role"] = "admin"
             matched_user["role"] = "admin"
+        if not matched_user.get("personalLibraryId"):
+            personal_lib = ensure_personal_library(
+                matched_user["pk"], matched_user.get("displayName")
+            )
+            updates["personalLibraryId"] = personal_lib["id"]
+            matched_user["personalLibraryId"] = personal_lib["id"]
         if updates:
             set_user_fields(matched_user["pk"], updates)
     else:
@@ -335,12 +342,16 @@ def resolve_or_provision_user(claims: dict[str, Any], config: dict[str, Any]) ->
         if not display_name:
             display_name = final_username
 
-        role = "admin" if should_be_admin else config.get("default_role", "readonly")
+        raw_default_role = config.get("default_role", "normal")
+        default_role = raw_default_role if raw_default_role in ("admin", "normal") else "normal"
+        role = "admin" if should_be_admin else default_role
+        personal_lib = create_personal_library_for_user(final_username, display_name)
 
         new_user = {
             "pk": final_username,
             "displayName": display_name,
             "role": role,
+            "personalLibraryId": personal_lib["id"],
             "passwordHash": "$disabled$oidc",
             "createdAt": datetime.now(UTC).isoformat(),
             "oidcSub": sub,

@@ -101,6 +101,12 @@ def require_admin(user: Annotated[AuthUser, Depends(require_auth)]) -> AuthUser:
     return user
 
 
+def require_write(user: Annotated[AuthUser, Depends(require_auth)]) -> AuthUser:
+    if user.role not in ("admin", "normal"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return user
+
+
 _RESET_PURPOSE = "pwreset"
 _RESET_TTL_MINUTES = 15
 

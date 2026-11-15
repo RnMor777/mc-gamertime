@@ -7,7 +7,7 @@ from pydantic import BaseModel, field_validator
 from ulid import ULID
 
 from lib.achievements import compute_achievements
-from lib.auth import AuthUser, require_admin, require_auth
+from lib.auth import AuthUser, require_auth, require_write
 from lib.db.games import get_game, list_games
 from lib.db.notifications import put_notification
 from lib.db.results import delete_result, get_result, list_results, put_result
@@ -285,7 +285,7 @@ def list_results_route(_: Annotated[AuthUser, Depends(require_auth)]):
 
 
 @router.post("", status_code=201)
-def create_result(body: AddResultBody, _: Annotated[AuthUser, Depends(require_admin)]):
+def create_result(body: AddResultBody, _: Annotated[AuthUser, Depends(require_write)]):
     player_ids = {p.playerId for p in body.players}
     if body.winnerId not in player_ids:
         raise HTTPException(status_code=422, detail="winnerId must be one of the submitted players")
@@ -324,7 +324,7 @@ def create_result(body: AddResultBody, _: Annotated[AuthUser, Depends(require_ad
 
 @router.put("/{result_id}")
 def update_result(
-    result_id: str, body: UpdateResultBody, _: Annotated[AuthUser, Depends(require_admin)]
+    result_id: str, body: UpdateResultBody, _: Annotated[AuthUser, Depends(require_write)]
 ):
     existing = get_result(result_id)
     if not existing:
@@ -369,7 +369,7 @@ def update_result(
 
 
 @router.delete("/{result_id}", status_code=204)
-def delete_result_route(result_id: str, _: Annotated[AuthUser, Depends(require_admin)]):
+def delete_result_route(result_id: str, _: Annotated[AuthUser, Depends(require_write)]):
     existing = get_result(result_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Result not found")

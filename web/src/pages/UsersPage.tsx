@@ -11,13 +11,18 @@ import { Dialog } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { useAuth } from "../lib/AuthContext";
 import { createUser, deleteUser, getUsers, updateUser } from "../lib/api";
-import type { UserSummary } from "../lib/types";
+import type { UserRole, UserSummary } from "../lib/types";
 
-const EMPTY_CREATE = {
+const EMPTY_CREATE: {
+  username: string;
+  displayName: string;
+  password: string;
+  role: UserRole;
+} = {
   username: "",
   displayName: "",
   password: "",
-  role: "readonly" as "admin" | "readonly",
+  role: "normal",
 };
 
 export default function UsersPage() {
@@ -32,9 +37,13 @@ export default function UsersPage() {
   const [createError, setCreateError] = useState("");
 
   const [editTarget, setEditTarget] = useState<UserSummary | null>(null);
-  const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm] = useState<{
+    displayName: string;
+    role: UserRole;
+    password: string;
+  }>({
     displayName: "",
-    role: "readonly" as "admin" | "readonly",
+    role: "normal",
     password: "",
   });
   const [editError, setEditError] = useState("");
@@ -222,12 +231,10 @@ export default function UsersPage() {
             />
             <select
               value={createForm.role}
-              onChange={(e) =>
-                setCreateForm((f) => ({ ...f, role: e.target.value as "admin" | "readonly" }))
-              }
+              onChange={(e) => setCreateForm((f) => ({ ...f, role: e.target.value as UserRole }))}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
-              <option value="readonly">Read-only</option>
+              <option value="normal">Normal</option>
               <option value="admin">Admin</option>
             </select>
             {createError && <p className="text-sm text-destructive">{createError}</p>}
@@ -267,12 +274,10 @@ export default function UsersPage() {
             />
             <select
               value={editForm.role}
-              onChange={(e) =>
-                setEditForm((f) => ({ ...f, role: e.target.value as "admin" | "readonly" }))
-              }
+              onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value as UserRole }))}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
-              <option value="readonly">Read-only</option>
+              <option value="normal">Normal</option>
               <option value="admin">Admin</option>
             </select>
             <Input

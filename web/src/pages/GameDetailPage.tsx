@@ -24,6 +24,7 @@ import { Skeleton } from "../components/ui/skeleton";
 import { Tooltip } from "../components/ui/tooltip";
 import { useCountUp } from "../hooks/useCountUp";
 import { useGames } from "../hooks/useGames";
+import { useLibraries } from "../hooks/useLibraries";
 import { usePosts } from "../hooks/usePosts";
 import { useResults } from "../hooks/useResults";
 import { useAuth } from "../lib/AuthContext";
@@ -33,6 +34,7 @@ import { formatDate, idFromPk } from "../lib/utils";
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { canEditActiveLibrary } = useLibraries();
   const { data: games = [], isLoading: gL } = useGames();
   const { data: results = [], isLoading: rL } = useResults();
   const { data: posts = [], isLoading: pL } = usePosts();
@@ -218,8 +220,8 @@ export default function GameDetailPage() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-display font-semibold">Stats</h2>
-            {user?.role === "admin" ? (
-              <div className="flex gap-2">
+            <div className="flex gap-2">
+              {canEditActiveLibrary && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -229,6 +231,8 @@ export default function GameDetailPage() {
                   <Settings size={14} />
                   Configure
                 </Button>
+              )}
+              {user?.role === "admin" ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -238,15 +242,15 @@ export default function GameDetailPage() {
                   <PenLine size={14} />
                   Log this game
                 </Button>
-              </div>
-            ) : (
-              <Tooltip text="Only admins can log results">
-                <Button variant="outline" size="sm" disabled className="gap-1.5 opacity-40">
-                  <PenLine size={14} />
-                  Log this game
-                </Button>
-              </Tooltip>
-            )}
+              ) : (
+                <Tooltip text="Only admins can log results">
+                  <Button variant="outline" size="sm" disabled className="gap-1.5 opacity-40">
+                    <PenLine size={14} />
+                    Log this game
+                  </Button>
+                </Tooltip>
+              )}
+            </div>
           </div>
           <div
             className={`grid gap-4 mb-4 ${avgScore != null ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"}`}
