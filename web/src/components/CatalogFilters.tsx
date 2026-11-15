@@ -1,9 +1,22 @@
-import { Star } from "lucide-react";
+import { Sparkles, Star } from "lucide-react";
 import { useState } from "react";
 import type { Game } from "../lib/types";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { DualRangeSlider } from "./ui/dual-range-slider";
+
+export const NEW_GAME_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+export const MAX_NEW_GAMES = 5;
+
+export function getNewGamePks(games: Game[], nowMs: number = Date.now()): Set<string> {
+  const cutoff = nowMs - NEW_GAME_WINDOW_MS;
+  const newestFive = [...games]
+    .filter((g) => Boolean(g.createdAt) && !Number.isNaN(Date.parse(g.createdAt)))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, MAX_NEW_GAMES)
+    .filter((g) => Date.parse(g.createdAt) >= cutoff);
+  return new Set(newestFive.map((g) => g.pk));
+}
 
 export interface FilterState {
   playerCount: [number, number];
@@ -12,6 +25,7 @@ export interface FilterState {
   yearPublished: [number, number];
   tags: string[];
   favorites: boolean;
+  newlyAdded?: boolean;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -21,6 +35,7 @@ export const DEFAULT_FILTERS: FilterState = {
   yearPublished: [1900, 2026],
   tags: [],
   favorites: false,
+  newlyAdded: false,
 };
 
 interface Props {
@@ -40,6 +55,7 @@ export function CatalogFilters({ games, filters, onChange }: Props) {
       filters.yearPublished[1] !== DEFAULT_FILTERS.yearPublished[1],
     filters.tags.length > 0,
     filters.favorites,
+    Boolean(filters.newlyAdded),
   ].filter(Boolean).length;
 
   return (
@@ -61,7 +77,7 @@ export function CatalogFilters({ games, filters, onChange }: Props) {
       </div>
       {open && (
         <div className="mt-3 p-4 rounded-lg border bg-card space-y-4">
-          <div>
+          <div className="flex flex-wrap gap-2">
             <Button
               variant={filters.favorites ? "default" : "outline"}
               size="sm"
@@ -70,6 +86,15 @@ export function CatalogFilters({ games, filters, onChange }: Props) {
             >
               <Star size={13} className={filters.favorites ? "fill-current" : ""} />
               Favorites only
+            </Button>
+            <Button
+              variant={filters.newlyAdded ? "default" : "outline"}
+              size="sm"
+              onClick={() => onChange({ ...filters, newlyAdded: !filters.newlyAdded })}
+              className="flex items-center gap-1.5"
+            >
+              <Sparkles size={13} />
+              Newly added
             </Button>
           </div>
           <div>
@@ -150,7 +175,12 @@ export function CatalogFilters({ games, filters, onChange }: Props) {
   );
 }
 
-export function applyFilters(games: Game[], filters: FilterState): Game[] {
+export function applyFilters(
+  games: Game[],
+  filters: FilterState,
+  nowMs: number = Date.now(),
+): Game[] {
+  const newPks = filters.newlyAdded ? getNewGamePks(games, nowMs) : null;
   return games.filter((g) => {
     if (filters.playerCount[0] !== 1 || filters.playerCount[1] !== 10) {
       if (g.minPlayers == null || g.maxPlayers == null) return false;
@@ -177,6 +207,7 @@ export function applyFilters(games: Game[], filters: FilterState): Game[] {
       if (!filters.tags.every((t) => g.tags.includes(t))) return false;
     }
     if (filters.favorites && !g.isFavorited) return false;
+    if (newPks && !newPks.has(g.pk)) return false;
     return true;
   });
 }

@@ -5,15 +5,23 @@ import { useGameStats } from "../hooks/useGameStats.ts";
 import { useGames } from "../hooks/useGames";
 import type { Game } from "../lib/types";
 import { idFromPk } from "../lib/utils";
-import { applyFilters, CatalogFilters, DEFAULT_FILTERS, type FilterState } from "./CatalogFilters";
+import {
+  applyFilters,
+  CatalogFilters,
+  DEFAULT_FILTERS,
+  type FilterState,
+  getNewGamePks,
+} from "./CatalogFilters";
 import { GameCard } from "./GameCard";
 import { GameCardSkeleton } from "./GameCardSkeleton.tsx";
 import { GameListRow } from "./GameListRow";
 import { Input } from "./ui/input";
 
-type SortKey =
+export type SortKey =
   | "name-asc"
   | "name-desc"
+  | "added-desc"
+  | "added-asc"
   | "weight-asc"
   | "weight-desc"
   | "time-asc"
@@ -26,13 +34,17 @@ interface Props {
   onDelete?: (id: string) => void;
 }
 
-function sortGames(games: Game[], key: SortKey): Game[] {
+export function sortGames(games: Game[], key: SortKey): Game[] {
   return [...games].sort((a, b) => {
     switch (key) {
       case "name-asc":
         return a.name.localeCompare(b.name);
       case "name-desc":
         return b.name.localeCompare(a.name);
+      case "added-desc":
+        return (b.createdAt ?? "").localeCompare(a.createdAt ?? "") || a.name.localeCompare(b.name);
+      case "added-asc":
+        return (a.createdAt ?? "").localeCompare(b.createdAt ?? "") || a.name.localeCompare(b.name);
       case "weight-asc":
         return (a.weight ?? 0) - (b.weight ?? 0);
       case "weight-desc":
@@ -63,6 +75,8 @@ export function GamePicker({ onSelect, onDelete }: Props) {
   const deferredSearch = useDeferredValue(debouncedSearch);
   const isStale = debouncedSearch !== deferredSearch;
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+
+  const newGamePks = useMemo(() => getNewGamePks(games), [games]);
 
   const visible = useMemo(() => {
     let g = applyFilters(games, filters);
@@ -106,6 +120,8 @@ export function GamePicker({ onSelect, onDelete }: Props) {
           >
             <option value="name-asc">Name A–Z</option>
             <option value="name-desc">Name Z–A</option>
+            <option value="added-desc">Added: Newest</option>
+            <option value="added-asc">Added: Oldest</option>
             <option value="weight-asc">Weight: Light → Heavy</option>
             <option value="weight-desc">Weight: Heavy → Light</option>
             <option value="time-asc">Play Time: Short → Long</option>
@@ -171,6 +187,7 @@ export function GamePicker({ onSelect, onDelete }: Props) {
                 handleDelete={handleDelete}
                 playCounts={playCounts[idFromPk(game.pk)]}
                 lastPlayed={lastPlayedDates[idFromPk(game.pk)]}
+                isNew={newGamePks.has(game.pk)}
               />
             </div>
           ))}
@@ -178,7 +195,13 @@ export function GamePicker({ onSelect, onDelete }: Props) {
       ) : (
         <div className="space-y-2">
           {visible.map((game) => (
-            <GameListRow key={game.pk} game={game} onSelect={onSelect} onDelete={handleDelete} />
+            <GameListRow
+              key={game.pk}
+              game={game}
+              onSelect={onSelect}
+              onDelete={handleDelete}
+              isNew={newGamePks.has(game.pk)}
+            />
           ))}
         </div>
       )}

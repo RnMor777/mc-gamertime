@@ -27,6 +27,7 @@ interface Props {
   handleDelete?: (id: string) => void;
   playCounts?: number;
   lastPlayed?: string;
+  isNew?: boolean;
 }
 
 // Icon buttons floating over the cover: one size so they line up, always visible on touch
@@ -39,6 +40,7 @@ export const GameCard = memo(function GameCard({
   handleDelete,
   playCounts,
   lastPlayed,
+  isNew,
 }: Props) {
   const gameId = idFromPk(game.pk);
   const bggUrl = game.bggId ? `https://boardgamegeek.com/boardgame/${game.bggId}` : undefined;
@@ -88,6 +90,14 @@ export const GameCard = memo(function GameCard({
       )}
     >
       <div className="relative">
+        {isNew && (
+          <Badge
+            className="absolute bottom-2 left-2 z-10 px-2 py-0.5 text-xs font-semibold shadow-xs"
+            title={game.createdAt ? `Added ${formatDate(game.createdAt.slice(0, 10))}` : "New"}
+          >
+            New
+          </Badge>
+        )}
         {playCounts && playCounts > 0 && (
           <Badge
             variant="secondary"

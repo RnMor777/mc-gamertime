@@ -5,15 +5,17 @@ import { useAuth } from "../lib/AuthContext";
 import type { Game } from "../lib/types";
 import { cn, idFromPk, pressable } from "../lib/utils";
 import { LogResultDialog } from "./LogResultDialog";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 
 interface Props {
   game: Game;
   onSelect?: (game: Game) => void;
   onDelete?: (id: string) => void;
+  isNew?: boolean;
 }
 
-export function GameListRow({ game, onSelect, onDelete }: Props) {
+export function GameListRow({ game, onSelect, onDelete, isNew }: Props) {
   const gameId = idFromPk(game.pk);
   const bggUrl = game.bggId ? `https://boardgamegeek.com/boardgame/${game.bggId}` : undefined;
   const { user } = useAuth();
@@ -64,17 +66,20 @@ export function GameListRow({ game, onSelect, onDelete }: Props) {
         </div>
       )}
       <div className="flex-1 min-w-0">
-        {onSelect ? (
-          <span className="font-display font-semibold text-sm">{game.name}</span>
-        ) : (
-          <Link
-            to={`/games/${gameId}`}
-            className="font-display font-semibold text-sm hover:text-primary transition-colors"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {game.name}
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          {onSelect ? (
+            <span className="font-display font-semibold text-sm">{game.name}</span>
+          ) : (
+            <Link
+              to={`/games/${gameId}`}
+              className="font-display font-semibold text-sm hover:text-primary transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {game.name}
+            </Link>
+          )}
+          {isNew && <Badge className="px-1.5 py-0 text-[10px] font-semibold">New</Badge>}
+        </div>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-muted-foreground">
           {game.minPlayers != null && game.maxPlayers != null && (
             <span className="flex items-center gap-1">
