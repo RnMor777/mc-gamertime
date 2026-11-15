@@ -39,8 +39,11 @@ export default function LogResult() {
     return Object.entries(map).sort(([a], [b]) => b.localeCompare(a));
   }, [results]);
 
-  function gameImageUrl(gameId: string): string | undefined {
-    return games.find((g) => idFromPk(g.pk) === gameId || g.pk === gameId)?.imageUrl;
+  function gameImageUrl(r: Result): string | undefined {
+    return (
+      r.gameImageUrl ??
+      games.find((g) => idFromPk(g.pk) === r.gameId || g.pk === r.gameId)?.imageUrl
+    );
   }
 
   async function handleDelete(pk: string) {
@@ -107,8 +110,13 @@ export default function LogResult() {
                     {monthResults.map((r, idx) => {
                       const linkedPost = postBySession.get(r.pk);
                       const isConfirming = confirmDelete === r.pk;
-                      const imgUrl = gameImageUrl(r.gameId);
+                      const imgUrl = gameImageUrl(r);
                       const isMyWin = r.winnerId === user?.sub;
+                      const canManageResult = Boolean(
+                        user &&
+                        (user.role === "admin" ||
+                          (r.createdBy != null && r.createdBy === user.sub)),
+                      );
 
                       return (
                         <motion.div
@@ -154,7 +162,7 @@ export default function LogResult() {
                                   <span className="text-xs text-muted-foreground">
                                     {formatDate(r.date)}
                                   </span>
-                                  {user && !isConfirming && (
+                                  {canManageResult && !isConfirming && (
                                     <button
                                       onClick={() => setEditTarget(r)}
                                       className="text-muted-foreground hover:text-foreground transition-colors p-2 -my-1.5 rounded-md hover:bg-muted/60"
@@ -163,7 +171,7 @@ export default function LogResult() {
                                       <Pencil size={14} />
                                     </button>
                                   )}
-                                  {user && !isConfirming && (
+                                  {canManageResult && !isConfirming && (
                                     <button
                                       onClick={() => setConfirmDelete(r.pk)}
                                       className="text-muted-foreground hover:text-destructive transition-colors p-2 -my-1.5 rounded-md hover:bg-muted/60"

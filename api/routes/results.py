@@ -281,11 +281,21 @@ def _detect_new_achievements(
 
 @router.get("")
 def list_results_route(_: Annotated[AuthUser, Depends(require_auth)]):
-    return list_results()
+    results = list_results()
+    games_by_id = {g["pk"]: g for g in list_games()}
+    enriched = []
+    for r in results:
+        game = games_by_id.get(r.get("gameId", ""))
+        image_url = (game.get("imageUrl") if game else None) or r.get("gameImageUrl")
+        if image_url:
+            enriched.append({**r, "gameImageUrl": image_url})
+        else:
+            enriched.append(r)
+    return enriched
 
 
 @router.post("", status_code=201)
-def create_result(body: AddResultBody, _: Annotated[AuthUser, Depends(require_write)]):
+def create_result(body: AddResultBody, user: Annotated[AuthUser, Depends(require_write)]):
     player_ids = {p.playerId for p in body.players}
     if body.winnerId not in player_ids:
         raise HTTPException(status_code=422, detail="winnerId must be one of the submitted players")
@@ -306,6 +316,8 @@ def create_result(body: AddResultBody, _: Annotated[AuthUser, Depends(require_wr
     result = {
         "pk": str(ULID()),
         "createdAt": datetime.now(UTC).isoformat(),
+        "createdBy": user.sub,
+        **({"gameImageUrl": game["imageUrl"]} if game.get("imageUrl") else {}),
         **body_dump,
     }
     put_result(result)
@@ -324,11 +336,13 @@ def create_result(body: AddResultBody, _: Annotated[AuthUser, Depends(require_wr
 
 @router.put("/{result_id}")
 def update_result(
-    result_id: str, body: UpdateResultBody, _: Annotated[AuthUser, Depends(require_write)]
+    result_id: str, body: UpdateResultBody, user: Annotated[AuthUser, Depends(require_write)]
 ):
     existing = get_result(result_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Result not found")
+    if user.role != "admin" and existing.get("createdBy") != user.sub:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     updated: dict[str, Any] = {**existing}
     for key, value in body.model_dump(exclude_unset=True).items():
@@ -349,6 +363,10 @@ def update_result(
         if not game:
             raise HTTPException(status_code=422, detail=f"Unknown game: {updated['gameId']}")
         updated["gameName"] = game.get("name", updated.get("gameName", ""))
+        if game.get("imageUrl"):
+            updated["gameImageUrl"] = game["imageUrl"]
+        else:
+            updated.pop("gameImageUrl", None)
 
     if body.players is not None:
         for player in updated["players"]:
@@ -369,10 +387,12 @@ def update_result(
 
 
 @router.delete("/{result_id}", status_code=204)
-def delete_result_route(result_id: str, _: Annotated[AuthUser, Depends(require_write)]):
+def delete_result_route(result_id: str, user: Annotated[AuthUser, Depends(require_write)]):
     existing = get_result(result_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Result not found")
+    if user.role != "admin" and existing.get("createdBy") != user.sub:
+        raise HTTPException(status_code=403, detail="Forbidden")
     # Photos first: if the cascade fails the result is still there and the
     # delete can be retried, rather than leaving orphaned photo rows behind.
     delete_session_photos(result_id)

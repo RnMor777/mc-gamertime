@@ -842,18 +842,40 @@ def test_update_result_revalidates_player_config_on_player_change(authed_client,
     assert "seat" in resp.json()["detail"]
 
 
-def test_normal_user_can_create_update_and_delete_result(authed_client, fake_db):
-    _seed_user(fake_db, "alice", "Alice")
-    _seed_user(fake_db, "bob", "Bob")
+def test_normal_user_can_create_update_and_delete_own_result_only_and_loads_game_image(fake_db):
+    from lib.auth import AuthUser, sign_token
+
+    def make_client(username: str, role: str) -> TestClient:
+        fake_db["users"].seed(
+            {
+                "pk": username,
+                "displayName": username.capitalize(),
+                "role": role,
+                "createdAt": "2026-01-01T00:00:00Z",
+                "passwordHash": "x",
+            }
+        )
+        token = sign_token(AuthUser(sub=username, role=role, displayName=username.capitalize()))
+        c = TestClient(app, raise_server_exceptions=False)
+        c.cookies.set("token", token)
+        return c
+
+    alice = make_client("alice", "normal")
+    bob = make_client("bob", "normal")
+    admin = make_client("admin", "admin")
+
     fake_db["games"].seed(
         {
             "pk": "01GAME",
             "name": "Catan",
+            "imageUrl": "https://example.com/catan.jpg",
+            "libraryId": "personal:alice",
+            "ownerId": "alice",
             "createdAt": "2026-01-01T00:00:00Z",
         }
     )
-    c = authed_client("normal")
-    create_resp = c.post(
+
+    create_resp = alice.post(
         "/api/results",
         json={
             "gameId": "01GAME",
@@ -869,15 +891,45 @@ def test_normal_user_can_create_update_and_delete_result(authed_client, fake_db)
         headers=ORIGIN,
     )
     assert create_resp.status_code == 201
-    result_pk = create_resp.json()["pk"]
+    created_data = create_resp.json()
+    result_pk = created_data["pk"]
+    assert created_data["createdBy"] == "alice"
+    assert created_data["gameImageUrl"] == "https://example.com/catan.jpg"
 
-    update_resp = c.put(
+    # Bob does not have Catan in his catalog, but GET /api/results still includes gameImageUrl
+    bob_results = bob.get("/api/results", headers=ORIGIN).json()
+    assert len(bob_results) == 1
+    assert bob_results[0]["gameImageUrl"] == "https://example.com/catan.jpg"
+
+    # Bob (who did not create the session and is not an admin) cannot edit or delete it
+    assert (
+        bob.put(
+            f"/api/results/{result_pk}",
+            json={"notes": "Edited by Bob"},
+            headers=ORIGIN,
+        ).status_code
+        == 403
+    )
+    assert bob.delete(f"/api/results/{result_pk}", headers=ORIGIN).status_code == 403
+
+    # Alice (the creator) can edit her own session
+    update_resp = alice.put(
         f"/api/results/{result_pk}",
-        json={"notes": "Logged by normal user"},
+        json={"notes": "Logged by Alice"},
         headers=ORIGIN,
     )
     assert update_resp.status_code == 200
-    assert update_resp.json()["notes"] == "Logged by normal user"
+    assert update_resp.json()["notes"] == "Logged by Alice"
 
-    delete_resp = c.delete(f"/api/results/{result_pk}", headers=ORIGIN)
+    # Admin can also edit any session
+    admin_update = admin.put(
+        f"/api/results/{result_pk}",
+        json={"notes": "Updated by Admin"},
+        headers=ORIGIN,
+    )
+    assert admin_update.status_code == 200
+    assert admin_update.json()["notes"] == "Updated by Admin"
+
+    # Alice can delete her own session
+    delete_resp = alice.delete(f"/api/results/{result_pk}", headers=ORIGIN)
     assert delete_resp.status_code == 204

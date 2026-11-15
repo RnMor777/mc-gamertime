@@ -106,16 +106,35 @@ def _compute_game_counts(
     games: list[dict[str, Any]],
     current_username: str,
     personal_lib_id: str,
+    all_libraries: list[dict[str, Any]] | None = None,
 ) -> dict[str, int]:
     counts: dict[str, int] = {}
-    personal_ids = get_personal_library_ids_for_user(current_username)
+    alias_to_lib_id: dict[str, str] = {}
+    owner_to_personal_lib_id: dict[str, str] = {current_username: personal_lib_id}
+    for pid in get_personal_library_ids_for_user(current_username):
+        alias_to_lib_id[pid] = personal_lib_id
+
+    for lib in all_libraries or []:
+        if lib.get("isPersonal") and lib.get("ownerId"):
+            owner = str(lib["ownerId"])
+            lib_id = str(lib["id"])
+            owner_to_personal_lib_id.setdefault(owner, lib_id)
+            for pid in get_personal_library_ids_for_user(owner):
+                alias_to_lib_id.setdefault(pid, lib_id)
+
     for g in games:
         lib_id = g.get("libraryId")
         owner_id = g.get("ownerId")
-        if lib_id in personal_ids or (lib_id is None and owner_id in (None, current_username)):
-            counts[personal_lib_id] = counts.get(personal_lib_id, 0) + 1
+        if lib_id and lib_id in alias_to_lib_id:
+            target_id = alias_to_lib_id[lib_id]
+            counts[target_id] = counts.get(target_id, 0) + 1
         elif lib_id:
             counts[lib_id] = counts.get(lib_id, 0) + 1
+        elif owner_id and owner_id in owner_to_personal_lib_id:
+            target_id = owner_to_personal_lib_id[owner_id]
+            counts[target_id] = counts.get(target_id, 0) + 1
+        elif owner_id is None:
+            counts[personal_lib_id] = counts.get(personal_lib_id, 0) + 1
     return counts
 
 
@@ -123,24 +142,25 @@ def _compute_game_counts(
 def list_libraries_route(user: Annotated[AuthUser, Depends(require_auth)]):
     personal_lib_doc = ensure_personal_library(user.sub, user.displayName)
     users_by_username = {u["pk"]: u for u in list_users()}
+    if user.role == "admin":
+        for uname, u_doc in users_by_username.items():
+            if uname != user.sub:
+                ensure_personal_library(uname, u_doc.get("displayName"))
+
+    all_libs = list_all_libraries()
     all_games = list_games()
-    game_counts = _compute_game_counts(all_games, user.sub, personal_lib_doc["id"])
+    game_counts = _compute_game_counts(all_games, user.sub, personal_lib_doc["id"], all_libs)
 
     personal_lib = _format_library(personal_lib_doc, user, users_by_username, game_counts)
 
     other_libs = [
         lib
-        for lib in list_all_libraries()
+        for lib in all_libs
         if lib["id"] != personal_lib_doc["id"]
         and not (lib.get("isPersonal") and lib.get("ownerId") == user.sub)
     ]
     accessible_other: list[dict[str, Any]] = []
     for lib in sorted(other_libs, key=lambda x: x.get("name", "").lower()):
-        if lib.get("isPersonal") and user.role == "admin":
-            # Don't clutter an admin's library switcher with every user's private unshared personal library
-            member_names = {m.get("username") for m in lib.get("members", [])}
-            if user.sub not in member_names:
-                continue
         role = get_user_library_role(lib["id"], user.sub, user.role, library=lib)
         if role is not None:
             accessible_other.append(_format_library(lib, user, users_by_username, game_counts))
@@ -192,7 +212,9 @@ def update_library_route(
     put_library(lib)
     personal_lib = ensure_personal_library(user.sub, user.displayName)
     users_by_username = {u["pk"]: u for u in list_users()}
-    game_counts = _compute_game_counts(list_games(), user.sub, personal_lib["id"])
+    game_counts = _compute_game_counts(
+        list_games(), user.sub, personal_lib["id"], list_all_libraries()
+    )
     return _format_library(lib, user, users_by_username, game_counts)
 
 
@@ -272,7 +294,9 @@ def add_or_update_member_route(
 
     personal_lib = ensure_personal_library(user.sub, user.displayName)
     users_by_username = {u["pk"]: u for u in list_users()}
-    game_counts = _compute_game_counts(list_games(), user.sub, personal_lib["id"])
+    game_counts = _compute_game_counts(
+        list_games(), user.sub, personal_lib["id"], list_all_libraries()
+    )
     return _format_library(lib, user, users_by_username, game_counts)
 
 
@@ -311,7 +335,9 @@ def update_member_role_route(
 
     personal_lib = ensure_personal_library(user.sub, user.displayName)
     users_by_username = {u["pk"]: u for u in list_users()}
-    game_counts = _compute_game_counts(list_games(), user.sub, personal_lib["id"])
+    game_counts = _compute_game_counts(
+        list_games(), user.sub, personal_lib["id"], list_all_libraries()
+    )
     return _format_library(lib, user, users_by_username, game_counts)
 
 

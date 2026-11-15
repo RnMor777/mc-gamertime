@@ -417,9 +417,11 @@ def test_user_in_multiple_family_libraries_and_edge_cases(fake_db):
         == 404
     )
 
-    # App admin can view all libraries and delete a library blocked by results (409 check)
+    # App admin can view all libraries (including all personal libraries) and delete a library blocked by results (409 check)
     admin_libs = admin.get("/api/libraries", headers=ORIGIN).json()
-    assert len(admin_libs) == 3
+    assert len(admin_libs) == 5
+    personal_owners = {lib["ownerId"] for lib in admin_libs if lib["isPersonal"]}
+    assert personal_owners == {"adminuser", "alice", "bob"}
     admin_all_games = admin.get("/api/games?libraryId=all", headers=ORIGIN)
     assert admin_all_games.status_code == 200
 

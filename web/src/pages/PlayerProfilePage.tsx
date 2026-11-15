@@ -549,12 +549,31 @@ export default function PlayerProfilePage() {
         {games.length > 0 &&
           (() => {
             const playedIds = new Set(myResults.map((r) => r.gameId));
-            const played = games.filter(
-              (g) => playedIds.has(idFromPk(g.pk)) || playedIds.has(g.pk),
+            const catalogGameIds = new Set(games.flatMap((g) => [g.pk, idFromPk(g.pk)]));
+            const extraPlayed = Array.from(
+              new Map(
+                myResults
+                  .filter((r) => !catalogGameIds.has(r.gameId))
+                  .map((r) => [
+                    r.gameId,
+                    {
+                      pk: r.gameId,
+                      name: r.gameName,
+                      imageUrl: r.gameImageUrl ?? undefined,
+                      tags: [],
+                      createdAt: r.createdAt,
+                    },
+                  ]),
+              ).values(),
             );
+            const played = [
+              ...games.filter((g) => playedIds.has(idFromPk(g.pk)) || playedIds.has(g.pk)),
+              ...extraPlayed,
+            ];
             const unplayed = games.filter(
               (g) => !playedIds.has(idFromPk(g.pk)) && !playedIds.has(g.pk),
             );
+            const totalPassportGames = games.length + extraPlayed.length;
             const playCounts: Record<string, number> = {};
             for (const r of myResults) {
               const key = idFromPk(
@@ -566,7 +585,7 @@ export default function PlayerProfilePage() {
               <section>
                 <h2 className="text-lg font-display font-semibold mb-1">Game Passport</h2>
                 <p className="text-xs text-muted-foreground mb-3">
-                  {played.length} of {games.length} games played
+                  {played.length} of {totalPassportGames} games played
                 </p>
                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                   {played.map((g) => (

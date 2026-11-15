@@ -79,7 +79,9 @@ export function useLibraries() {
   });
 
   const personalId =
-    query.data?.find((l) => l.isPersonal)?.id ?? (user ? `personal:${user.sub}` : "");
+    query.data?.find((l) => l.isPersonal && l.ownerId === user?.sub)?.id ??
+    query.data?.find((l) => l.isPersonal)?.id ??
+    (user ? `personal:${user.sub}` : "");
   const fallbackPersonal: Library | null = user
     ? {
         id: personalId,
@@ -102,12 +104,16 @@ export function useLibraries() {
     query.data && query.data.length > 0 ? query.data : fallbackPersonal ? [fallbackPersonal] : [];
   const matchedStored = storedId ? libraries.find((l) => l.id === storedId) : undefined;
   const activeLibrary =
-    matchedStored ?? libraries.find((l) => l.isPersonal) ?? libraries[0] ?? fallbackPersonal;
+    matchedStored ??
+    libraries.find((l) => l.isPersonal && l.ownerId === user?.sub) ??
+    libraries.find((l) => l.isPersonal) ??
+    libraries[0] ??
+    fallbackPersonal;
 
   useEffect(() => {
     if (!user?.sub || !storedId || !query.data || query.data.length === 0) return;
     const match = query.data.find((l) => l.id === storedId);
-    if (!match || match.isPersonal) {
+    if (!match || (match.isPersonal && match.ownerId === user.sub)) {
       setStoredLibraryId(user.sub, null);
     }
   }, [user?.sub, storedId, query.data]);
@@ -136,7 +142,9 @@ export function useLibraries() {
   );
 
   const selectedFamilyLibraryId =
-    matchedStored && !matchedStored.isPersonal ? matchedStored.id : undefined;
+    matchedStored && !(matchedStored.isPersonal && matchedStored.ownerId === user?.sub)
+      ? matchedStored.id
+      : undefined;
 
   return {
     ...query,

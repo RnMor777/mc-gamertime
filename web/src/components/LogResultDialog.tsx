@@ -226,12 +226,31 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
     if (!uploading) onClose();
   };
 
+  const availableGames = useMemo(() => {
+    if (
+      editResult &&
+      !games.some((g) => idFromPk(g.pk) === editResult.gameId || g.pk === editResult.gameId)
+    ) {
+      return [
+        ...games,
+        {
+          pk: editResult.gameId,
+          name: editResult.gameName,
+          tags: [],
+          createdAt: editResult.createdAt,
+        },
+      ];
+    }
+    return games;
+  }, [games, editResult]);
+
   const filteredGames = useMemo(
-    () => games.filter((g) => g.name.toLowerCase().includes(state.gameSearch.toLowerCase())),
-    [games, state.gameSearch],
+    () =>
+      availableGames.filter((g) => g.name.toLowerCase().includes(state.gameSearch.toLowerCase())),
+    [availableGames, state.gameSearch],
   );
 
-  const selectedGame = games.find((g) => idFromPk(g.pk) === state.gameId);
+  const selectedGame = availableGames.find((g) => idFromPk(g.pk) === state.gameId);
   const playerVariables = selectedGame?.playerVariables ?? [];
   const trackTurnOrder = selectedGame?.trackTurnOrder ?? false;
 
@@ -277,7 +296,7 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
     }
     setErrors({});
 
-    const game = games.find((g) => idFromPk(g.pk) === state.gameId);
+    const game = availableGames.find((g) => idFromPk(g.pk) === state.gameId);
     const winner = users.find((u) => u.pk === state.winnerId);
 
     if (!game || !winner) {

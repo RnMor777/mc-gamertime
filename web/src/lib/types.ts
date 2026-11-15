@@ -56,11 +56,13 @@ export interface Result {
   pk: string;
   gameId: string;
   gameName: string;
+  gameImageUrl?: string | null;
   date: string;
   players: ResultPlayer[];
   winnerId: string;
   winnerName: string;
   createdAt: string;
+  createdBy?: string;
   milestone?: string | null;
   newAchievements?: NewAchievement[];
   mood?: number | null;
