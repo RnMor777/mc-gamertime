@@ -218,6 +218,7 @@ _SECURITY_HEADERS = {
     ),
 }
 
+
 @app.middleware("http")
 async def origin_guard(request: Request, call_next):
     global _init_failure_logged

@@ -47,7 +47,8 @@ const uploaded: PhotoItem = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.getGames).mockResolvedValue([]);
-  vi.mocked(api.getUsers).mockResolvedValue([]);
+  vi.mocked(api.getLibraries).mockResolvedValue([]);
+  vi.mocked(api.getPlayers).mockResolvedValue([]);
   vi.mocked(api.getCurrentUser).mockResolvedValue({
     sub: "bob",
     role: "normal",
@@ -68,23 +69,23 @@ beforeEach(() => {
 
 function renderOpen(props: { onClose: () => void; editResult?: Result }) {
   vi.mocked(api.getCurrentUser).mockResolvedValue({
-    sub: "admin",
-    role: "admin",
-    displayName: "Admin",
+    sub: "bob",
+    role: "normal",
+    displayName: "Bob",
   });
   vi.mocked(api.getGames).mockResolvedValue([
     { pk: "g1", name: "Catan", tags: [], createdAt: "2026-01-01T00:00:00Z" },
   ]);
-  const users = [
-    { username: "alice", displayName: "Alice", role: "admin" as const },
-    { username: "bob", displayName: "Bob", role: "normal" as const },
+  const players = [
+    { pk: "alice", displayName: "Alice" },
+    { pk: "bob", displayName: "Bob" },
   ];
-  vi.mocked(api.getUsers).mockResolvedValue(users);
+  vi.mocked(api.getPlayers).mockResolvedValue(players);
   vi.mocked(api.addResult).mockResolvedValue(created);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // Edit mode renders the result's players straight away and looks each one
-  // up in the user list, so it has to be there on first render.
-  qc.setQueryData(["users"], users);
+  // up in the player list, so it has to be there on first render.
+  qc.setQueryData(["players"], players);
   return render(
     <QueryClientProvider client={qc}>
       <AuthProvider>
@@ -112,9 +113,7 @@ function pickPhotos(count: number) {
 }
 
 describe("LogResultDialog", () => {
-  it("does not fetch the admin-only user list while closed", async () => {
-    // Mounted once per game card, for every viewer: a readonly user would get
-    // a 403 from GET /users for each card if the query ran while closed.
+  it("does not fetch the player list while closed", async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
@@ -125,7 +124,7 @@ describe("LogResultDialog", () => {
       </QueryClientProvider>,
     );
     await vi.waitFor(() => expect(api.getGames).toHaveBeenCalled());
-    expect(api.getUsers).not.toHaveBeenCalled();
+    expect(api.getPlayers).not.toHaveBeenCalled();
   });
 
   it("uploads picked photos with the new result pk, then closes", async () => {

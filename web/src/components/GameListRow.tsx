@@ -6,7 +6,6 @@ import type { Game } from "../lib/types";
 import { cn, idFromPk, pressable } from "../lib/utils";
 import { LogResultDialog } from "./LogResultDialog";
 import { Button } from "./ui/button";
-import { Tooltip } from "./ui/tooltip";
 
 interface Props {
   game: Game;
@@ -103,32 +102,19 @@ export function GameListRow({ game, onSelect, onDelete }: Props) {
           )}
         </div>
       </div>
-      {!onSelect &&
-        (user?.role === "admin" ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="shrink-0 text-muted-foreground hover:text-foreground"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowLogDialog(true);
-            }}
-          >
-            <PenLine size={14} />
-          </Button>
-        ) : (
-          <Tooltip text="Only admins can log results">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="shrink-0 opacity-40"
-              disabled
-              onClick={(e) => e.stopPropagation()}
-            >
-              <PenLine size={14} />
-            </Button>
-          </Tooltip>
-        ))}
+      {!onSelect && user && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowLogDialog(true);
+          }}
+        >
+          <PenLine size={14} />
+        </Button>
+      )}
       {onDelete && (
         <Button
           variant="ghost"

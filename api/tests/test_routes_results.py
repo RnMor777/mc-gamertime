@@ -840,3 +840,44 @@ def test_update_result_revalidates_player_config_on_player_change(authed_client,
     )
     assert resp.status_code == 422
     assert "seat" in resp.json()["detail"]
+
+
+def test_normal_user_can_create_update_and_delete_result(authed_client, fake_db):
+    _seed_user(fake_db, "alice", "Alice")
+    _seed_user(fake_db, "bob", "Bob")
+    fake_db["games"].seed(
+        {
+            "pk": "01GAME",
+            "name": "Catan",
+            "createdAt": "2026-01-01T00:00:00Z",
+        }
+    )
+    c = authed_client("normal")
+    create_resp = c.post(
+        "/api/results",
+        json={
+            "gameId": "01GAME",
+            "gameName": "Catan",
+            "date": "2026-01-15",
+            "players": [
+                {"playerId": "alice", "playerName": "Alice"},
+                {"playerId": "bob", "playerName": "Bob"},
+            ],
+            "winnerId": "alice",
+            "winnerName": "Alice",
+        },
+        headers=ORIGIN,
+    )
+    assert create_resp.status_code == 201
+    result_pk = create_resp.json()["pk"]
+
+    update_resp = c.put(
+        f"/api/results/{result_pk}",
+        json={"notes": "Logged by normal user"},
+        headers=ORIGIN,
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["notes"] == "Logged by normal user"
+
+    delete_resp = c.delete(f"/api/results/{result_pk}", headers=ORIGIN)
+    assert delete_resp.status_code == 204

@@ -26,19 +26,16 @@ import { PostCard } from "../components/PostCard";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Skeleton } from "../components/ui/skeleton";
-import { Tooltip } from "../components/ui/tooltip";
 import { useCountUp } from "../hooks/useCountUp";
 import { useDeleteGameExpansion, useGames } from "../hooks/useGames";
 import { useLibraries } from "../hooks/useLibraries";
 import { usePosts } from "../hooks/usePosts";
 import { useResults } from "../hooks/useResults";
-import { useAuth } from "../lib/AuthContext";
 import type { GameExpansion, Result } from "../lib/types";
 import { formatDate, idFromPk } from "../lib/utils";
 
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
   const { canEditActiveLibrary } = useLibraries();
   const { data: games = [], isLoading: gL } = useGames();
   const { data: results = [], isLoading: rL } = useResults();
@@ -382,24 +379,15 @@ export default function GameDetailPage() {
                   Configure
                 </Button>
               )}
-              {user?.role === "admin" ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowLogDialog(true)}
-                  className="gap-1.5"
-                >
-                  <PenLine size={14} />
-                  Log this game
-                </Button>
-              ) : (
-                <Tooltip text="Only admins can log results">
-                  <Button variant="outline" size="sm" disabled className="gap-1.5 opacity-40">
-                    <PenLine size={14} />
-                    Log this game
-                  </Button>
-                </Tooltip>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowLogDialog(true)}
+                className="gap-1.5"
+              >
+                <PenLine size={14} />
+                Log this game
+              </Button>
             </div>
           </div>
           <div

@@ -4,7 +4,7 @@ import { useId, useLayoutEffect, useMemo, useReducer, useRef, useState } from "r
 import { toast } from "sonner";
 import { useGames } from "../hooks/useGames";
 import { useAddResult, useUpdateResult } from "../hooks/useResults";
-import { getUsers } from "../lib/api";
+import { getPlayers } from "../lib/api";
 import { MAX_PHOTOS, preparePhoto, uploadSessionPhoto } from "../lib/photos";
 import { ResultFormSchema } from "../lib/schemas";
 import type { Result } from "../lib/types";
@@ -162,11 +162,10 @@ export function formReducer(state: FormState, action: Action): FormState {
 
 export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Props) {
   const { data: games = [] } = useGames();
-  // Admin-only endpoint, and this dialog is mounted once per game card for
-  // every viewer: only fetch once it is actually opened (by an admin).
+  // Mounted once per game card: only fetch players once the dialog is opened.
   const { data: users = [] } = useQuery({
-    queryKey: ["users"],
-    queryFn: getUsers,
+    queryKey: ["players"],
+    queryFn: getPlayers,
     enabled: open,
   });
   const addResult = useAddResult();
@@ -279,7 +278,7 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
     setErrors({});
 
     const game = games.find((g) => idFromPk(g.pk) === state.gameId);
-    const winner = users.find((u) => u.username === state.winnerId);
+    const winner = users.find((u) => u.pk === state.winnerId);
 
     if (!game || !winner) {
       console.error("Game or winner not found in data arrays");
@@ -292,7 +291,7 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
       gameName: game.name,
       date: state.date,
       players: state.selected.map((username) => {
-        const u = users.find((u) => u.username === username)!;
+        const u = users.find((u) => u.pk === username)!;
         const score = parseFloat(state.scores[username] ?? "");
         return {
           playerId: username,
@@ -412,13 +411,13 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
           )}
           <div className="mt-1 flex flex-wrap gap-2">
             {users.map((u) => {
-              const isSelected = state.selected.includes(u.username);
+              const isSelected = state.selected.includes(u.pk);
               return (
                 <button
-                  key={u.username}
+                  key={u.pk}
                   type="button"
                   aria-pressed={isSelected}
-                  onClick={() => dispatch({ type: "TOGGLE_PLAYER", playerId: u.username })}
+                  onClick={() => dispatch({ type: "TOGGLE_PLAYER", playerId: u.pk })}
                   className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm border transition-all duration-200 ${
                     isSelected
                       ? "bg-primary text-primary-foreground border-primary scale-105 shadow-xs shadow-primary/20"
@@ -443,7 +442,7 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
             <label className="text-sm font-medium">Scores (optional)</label>
             <div className="mt-1 space-y-2">
               {state.selected.map((username) => {
-                const u = users.find((u) => u.username === username)!;
+                const u = users.find((u) => u.pk === username)!;
                 return (
                   <div key={username} className="flex items-center justify-between gap-2">
                     <span className="text-sm">{u.displayName}</span>
@@ -470,7 +469,7 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
                 <label className="text-sm font-medium">{v.label}</label>
                 <div className="mt-1 space-y-2">
                   {state.selected.map((username) => {
-                    const u = users.find((u) => u.username === username)!;
+                    const u = users.find((u) => u.pk === username)!;
                     return (
                       <div key={username} className="flex items-center justify-between gap-2">
                         <span className="text-sm">{u.displayName}</span>
@@ -509,7 +508,7 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
             <label className="text-sm font-medium">Seat order (1 = went first)</label>
             <div className="mt-1 space-y-2">
               {state.selected.map((username) => {
-                const u = users.find((u) => u.username === username)!;
+                const u = users.find((u) => u.pk === username)!;
                 return (
                   <div key={username} className="flex items-center justify-between gap-2">
                     <span className="text-sm">{u.displayName}</span>
@@ -587,7 +586,7 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
             >
               <option value="">Select winner…</option>
               {state.selected.map((username) => {
-                const u = users.find((u) => u.username === username)!;
+                const u = users.find((u) => u.pk === username)!;
                 return (
                   <option key={username} value={username}>
                     {u.displayName}

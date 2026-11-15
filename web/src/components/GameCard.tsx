@@ -137,7 +137,7 @@ export const GameCard = memo(function GameCard({
               <Star size={14} fill={isFavorited ? "currentColor" : "none"} />
             </button>
           )}
-          {user?.role === "admin" && (
+          {user && (
             <button
               onClick={() => setShowLogDialog(true)}
               className={cn(overlayButton, "text-white/70 hover:text-blue-300")}

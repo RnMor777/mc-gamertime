@@ -7,7 +7,6 @@ import { LogResultDialog } from "../components/LogResultDialog";
 import { PageTransition } from "../components/PageTransition";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
-import { Tooltip } from "../components/ui/tooltip";
 import { useCountUp } from "../hooks/useCountUp";
 import { useResults } from "../hooks/useResults";
 import { useDisplayName, usePublicSettings } from "../hooks/useSettings";
@@ -68,21 +67,10 @@ export default function HomePage() {
                 : "No sessions yet — go play something"}
             </p>
           </div>
-          {user?.role === "admin" ? (
-            <Button onClick={() => setShowLog(true)} className="gap-2 shrink-0">
-              <PenLine size={15} />
-              Log session
-            </Button>
-          ) : (
-            <Tooltip text="Only admins can log sessions">
-              <span>
-                <Button disabled className="gap-2 shrink-0 pointer-events-none">
-                  <PenLine size={15} />
-                  Log session
-                </Button>
-              </span>
-            </Tooltip>
-          )}
+          <Button onClick={() => setShowLog(true)} className="gap-2 shrink-0">
+            <PenLine size={15} />
+            Log session
+          </Button>
         </div>
 
         {/* Stats row */}
@@ -156,14 +144,12 @@ export default function HomePage() {
               <div className="text-center py-10 text-muted-foreground">
                 <Dices size={28} className="mx-auto mb-2 opacity-30" />
                 <p className="text-sm">No sessions yet</p>
-                {user?.role === "admin" && (
-                  <button
-                    onClick={() => setShowLog(true)}
-                    className="text-xs text-primary hover:underline mt-1"
-                  >
-                    Log your first game →
-                  </button>
-                )}
+                <button
+                  onClick={() => setShowLog(true)}
+                  className="text-xs text-primary hover:underline mt-1"
+                >
+                  Log your first game →
+                </button>
               </div>
             ) : (
               <div className="space-y-2">

@@ -9,7 +9,6 @@ import { SessionPhotos } from "../components/SessionPhotos";
 import { SessionReactions } from "../components/SessionReactions";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
-import { Tooltip } from "../components/ui/tooltip";
 import { useGames } from "../hooks/useGames";
 import { usePosts } from "../hooks/usePosts";
 import { useDeleteResult, useResults } from "../hooks/useResults";
@@ -57,21 +56,10 @@ export default function LogResult() {
             <PenLine size={24} className="text-primary" />
             Chronicle
           </h1>
-          {user?.role === "admin" ? (
-            <Button onClick={() => setOpen(true)} className="gap-1.5">
-              <Plus size={16} />
-              Log session
-            </Button>
-          ) : (
-            <Tooltip text="Only admins can log sessions">
-              <span>
-                <Button disabled className="gap-1.5 pointer-events-none">
-                  <Plus size={16} />
-                  Log session
-                </Button>
-              </span>
-            </Tooltip>
-          )}
+          <Button onClick={() => setOpen(true)} className="gap-1.5">
+            <Plus size={16} />
+            Log session
+          </Button>
         </div>
 
         {isLoading && (
@@ -86,12 +74,10 @@ export default function LogResult() {
           <div className="text-center py-20 text-muted-foreground">
             <PenLine size={48} className="mx-auto mb-4 opacity-30" />
             <p className="text-lg font-display font-semibold">No sessions yet</p>
-            {user?.role === "admin" && (
-              <Button className="mt-4 gap-1.5" onClick={() => setOpen(true)}>
-                <Plus size={16} />
-                Log your first game
-              </Button>
-            )}
+            <Button className="mt-4 gap-1.5" onClick={() => setOpen(true)}>
+              <Plus size={16} />
+              Log your first game
+            </Button>
           </div>
         )}
 
@@ -168,7 +154,7 @@ export default function LogResult() {
                                   <span className="text-xs text-muted-foreground">
                                     {formatDate(r.date)}
                                   </span>
-                                  {user?.role === "admin" && !isConfirming && (
+                                  {user && !isConfirming && (
                                     <button
                                       onClick={() => setEditTarget(r)}
                                       className="text-muted-foreground hover:text-foreground transition-colors p-2 -my-1.5 rounded-md hover:bg-muted/60"
@@ -177,7 +163,7 @@ export default function LogResult() {
                                       <Pencil size={14} />
                                     </button>
                                   )}
-                                  {user?.role === "admin" && !isConfirming && (
+                                  {user && !isConfirming && (
                                     <button
                                       onClick={() => setConfirmDelete(r.pk)}
                                       className="text-muted-foreground hover:text-destructive transition-colors p-2 -my-1.5 rounded-md hover:bg-muted/60"
