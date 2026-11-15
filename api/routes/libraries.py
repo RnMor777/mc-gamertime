@@ -14,8 +14,9 @@ from lib.db.libraries import (
     delete_library,
     ensure_personal_library,
     get_library,
+    get_personal_library_ids_for_user,
     get_user_library_role,
-    list_family_libraries,
+    list_all_libraries,
     normalize_library_role,
     put_library,
 )
@@ -107,11 +108,11 @@ def _compute_game_counts(
     personal_lib_id: str,
 ) -> dict[str, int]:
     counts: dict[str, int] = {}
-    legacy_personal = f"{PERSONAL_PREFIX}{current_username}"
+    personal_ids = get_personal_library_ids_for_user(current_username)
     for g in games:
         lib_id = g.get("libraryId")
         owner_id = g.get("ownerId")
-        if lib_id == legacy_personal or (lib_id is None and owner_id in (None, current_username)):
+        if lib_id in personal_ids or (lib_id is None and owner_id in (None, current_username)):
             counts[personal_lib_id] = counts.get(personal_lib_id, 0) + 1
         elif lib_id:
             counts[lib_id] = counts.get(lib_id, 0) + 1
@@ -127,14 +128,24 @@ def list_libraries_route(user: Annotated[AuthUser, Depends(require_auth)]):
 
     personal_lib = _format_library(personal_lib_doc, user, users_by_username, game_counts)
 
-    family_libs = list_family_libraries()
-    accessible_family: list[dict[str, Any]] = []
-    for lib in sorted(family_libs, key=lambda x: x.get("name", "").lower()):
+    other_libs = [
+        lib
+        for lib in list_all_libraries()
+        if lib["id"] != personal_lib_doc["id"]
+        and not (lib.get("isPersonal") and lib.get("ownerId") == user.sub)
+    ]
+    accessible_other: list[dict[str, Any]] = []
+    for lib in sorted(other_libs, key=lambda x: x.get("name", "").lower()):
+        if lib.get("isPersonal") and user.role == "admin":
+            # Don't clutter an admin's library switcher with every user's private unshared personal library
+            member_names = {m.get("username") for m in lib.get("members", [])}
+            if user.sub not in member_names:
+                continue
         role = get_user_library_role(lib["id"], user.sub, user.role, library=lib)
         if role is not None:
-            accessible_family.append(_format_library(lib, user, users_by_username, game_counts))
+            accessible_other.append(_format_library(lib, user, users_by_username, game_counts))
 
-    return [personal_lib, *accessible_family]
+    return [personal_lib, *accessible_other]
 
 
 @router.post("", status_code=201)
@@ -156,21 +167,24 @@ def create_library_route(
     return _format_library(lib, user, users_by_username, {})
 
 
+def _resolve_target_library(library_id: str) -> dict[str, Any] | None:
+    if library_id.startswith(PERSONAL_PREFIX):
+        owner = library_id.removeprefix(PERSONAL_PREFIX)
+        return ensure_personal_library(owner) if get_user(owner) else None
+    return get_library(library_id)
+
+
 @router.put("/{library_id}")
 def update_library_route(
     library_id: str,
     body: UpdateLibraryBody,
     user: Annotated[AuthUser, Depends(require_write)],
 ):
-    if library_id.startswith(PERSONAL_PREFIX):
-        raise HTTPException(status_code=400, detail="Cannot modify personal library")
-    lib = get_library(library_id)
+    lib = _resolve_target_library(library_id)
     if not lib:
         raise HTTPException(status_code=404, detail="Library not found")
-    if lib.get("isPersonal"):
-        raise HTTPException(status_code=400, detail="Cannot modify personal library")
 
-    role = get_user_library_role(library_id, user.sub, user.role, library=lib)
+    role = get_user_library_role(lib["id"], user.sub, user.role, library=lib)
     if role != "owner":
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -224,15 +238,11 @@ def add_or_update_member_route(
     body: AddLibraryMemberBody,
     user: Annotated[AuthUser, Depends(require_write)],
 ):
-    if library_id.startswith(PERSONAL_PREFIX):
-        raise HTTPException(status_code=400, detail="Cannot add members to a personal library")
-    lib = get_library(library_id)
+    lib = _resolve_target_library(library_id)
     if not lib:
         raise HTTPException(status_code=404, detail="Library not found")
-    if lib.get("isPersonal"):
-        raise HTTPException(status_code=400, detail="Cannot add members to a personal library")
 
-    caller_role = get_user_library_role(library_id, user.sub, user.role, library=lib)
+    caller_role = get_user_library_role(lib["id"], user.sub, user.role, library=lib)
     if caller_role != "owner":
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -256,7 +266,7 @@ def add_or_update_member_route(
         raise HTTPException(status_code=400, detail="Library must have at least one owner")
 
     lib["members"] = new_members
-    if lib["ownerId"] not in owners:
+    if not lib.get("isPersonal") and lib["ownerId"] not in owners:
         lib["ownerId"] = owners[0]
     put_library(lib)
 
@@ -273,15 +283,11 @@ def update_member_role_route(
     body: UpdateLibraryMemberBody,
     user: Annotated[AuthUser, Depends(require_write)],
 ):
-    if library_id.startswith(PERSONAL_PREFIX):
-        raise HTTPException(status_code=400, detail="Cannot modify personal library members")
-    lib = get_library(library_id)
+    lib = _resolve_target_library(library_id)
     if not lib:
         raise HTTPException(status_code=404, detail="Library not found")
-    if lib.get("isPersonal"):
-        raise HTTPException(status_code=400, detail="Cannot modify personal library members")
 
-    caller_role = get_user_library_role(library_id, user.sub, user.role, library=lib)
+    caller_role = get_user_library_role(lib["id"], user.sub, user.role, library=lib)
     if caller_role != "owner":
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -295,9 +301,11 @@ def update_member_role_route(
     owners = [m["username"] for m in members if m["role"] == "owner"]
     if not owners:
         raise HTTPException(status_code=400, detail="Library must have at least one owner")
+    if lib.get("isPersonal") and lib.get("ownerId") not in owners:
+        raise HTTPException(status_code=400, detail="Personal library owner must remain an owner")
 
     lib["members"] = members
-    if lib["ownerId"] not in owners:
+    if not lib.get("isPersonal") and lib["ownerId"] not in owners:
         lib["ownerId"] = owners[0]
     put_library(lib)
 
@@ -313,15 +321,11 @@ def remove_member_route(
     username: str,
     user: Annotated[AuthUser, Depends(require_auth)],
 ):
-    if library_id.startswith(PERSONAL_PREFIX):
-        raise HTTPException(status_code=400, detail="Cannot remove members from a personal library")
-    lib = get_library(library_id)
+    lib = _resolve_target_library(library_id)
     if not lib:
         raise HTTPException(status_code=404, detail="Library not found")
-    if lib.get("isPersonal"):
-        raise HTTPException(status_code=400, detail="Cannot remove members from a personal library")
 
-    caller_role = get_user_library_role(library_id, user.sub, user.role, library=lib)
+    caller_role = get_user_library_role(lib["id"], user.sub, user.role, library=lib)
     is_self_leave = user.sub == username
     if caller_role != "owner" and not is_self_leave:
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -332,10 +336,10 @@ def remove_member_route(
 
     remaining = [m for m in members if m["username"] != username]
     owners = [m["username"] for m in remaining if m["role"] == "owner"]
-    if not owners:
+    if not owners or (lib.get("isPersonal") and lib.get("ownerId") not in owners):
         raise HTTPException(status_code=400, detail="Cannot remove the last owner of the library")
 
     lib["members"] = remaining
-    if lib["ownerId"] not in owners:
+    if not lib.get("isPersonal") and lib["ownerId"] not in owners:
         lib["ownerId"] = owners[0]
     put_library(lib)

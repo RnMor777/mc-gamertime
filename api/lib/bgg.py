@@ -48,9 +48,14 @@ def _fetch_xml(url: str, params: dict | None = None) -> Element:
     return ET.fromstring(response.text)
 
 
-def _bgg_smart_search(query: str, exact: bool = False) -> list[dict]:
+def _bgg_smart_search(
+    query: str,
+    exact: bool = False,
+    item_type: str = "boardgame",
+    limit: int = 10,
+) -> list[dict]:
     """Internal search implementation with optional exact matching."""
-    params = {"query": query, "type": "boardgame"}
+    params = {"query": query, "type": item_type}
     if exact:
         params["exact"] = "1"
 
@@ -91,7 +96,7 @@ def _bgg_smart_search(query: str, exact: bool = False) -> list[dict]:
         return (match_type, len(title))
 
     sorted_results = sorted(raw_results, key=score_result)
-    return sorted_results[:10]
+    return sorted_results[:limit]
 
 
 def bgg_search(query: str) -> list[dict]:
@@ -100,6 +105,11 @@ def bgg_search(query: str) -> list[dict]:
     if exact_results:
         return exact_results
     return _bgg_smart_search(query, exact=False)
+
+
+def bgg_search_expansions(query: str) -> list[dict]:
+    """Search BGG for board game expansions (type=boardgameexpansion)."""
+    return _bgg_smart_search(query, exact=False, item_type="boardgameexpansion", limit=20)
 
 
 def bgg_detail(bgg_id: int) -> dict:

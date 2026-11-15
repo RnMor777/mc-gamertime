@@ -28,6 +28,30 @@ def test_bgg_search_passes_query_through_params_for_encoding(monkeypatch):
     assert captured["params"] == {"query": "catan & friends", "type": "boardgame"}
 
 
+def test_bgg_search_expansions_passes_boardgameexpansion_type(monkeypatch):
+    captured = {}
+
+    def fake_get(url, params=None, **kwargs):
+        captured["url"] = url
+        captured["params"] = params
+        return _FakeResponse(
+            "<items>"
+            '<item id="926"><name value="Catan: Seafarers"/><yearpublished value="1997"/></item>'
+            '<item id="925"><name value="Catan: Cities &amp; Knights"/><yearpublished value="1998"/></item>'
+            "</items>"
+        )
+
+    monkeypatch.setattr(bgg.httpx, "get", fake_get)
+    results = bgg.bgg_search_expansions("Catan")
+
+    assert captured["url"] == f"{bgg.BGG_API_BASE}/search"
+    assert captured["params"] == {"query": "Catan", "type": "boardgameexpansion"}
+    assert len(results) == 2
+    assert results[0]["name"] == "Catan: Seafarers"
+    assert results[0]["bggId"] == 926
+    assert results[0]["yearPublished"] == 1997
+
+
 def test_fetch_xml_rejects_entity_expansion(monkeypatch):
     malicious_xml = (
         '<?xml version="1.0"?>'

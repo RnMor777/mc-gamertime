@@ -2,7 +2,7 @@ import os
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from xml.etree.ElementTree import ParseError
 
 import httpx
@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from ulid import ULID
 
 from lib.auth import AuthUser, require_auth, require_write
-from lib.bgg import BggNotFoundError, bgg_detail, bgg_search
+from lib.bgg import BggNotFoundError, bgg_detail, bgg_search, bgg_search_expansions
 from lib.db.games import (
     GameNotFoundError,
     add_favourite,
@@ -26,8 +26,9 @@ from lib.db.libraries import (
     PERSONAL_PREFIX,
     ensure_personal_library,
     get_library,
+    get_personal_library_ids_for_user,
     get_user_library_role,
-    list_family_libraries,
+    list_all_libraries,
     resolve_library_id,
 )
 from lib.db.recs import list_recs
@@ -89,6 +90,63 @@ def _assign_variable_ids(variables: list[dict]) -> list[dict]:
     return result
 
 
+class ExpansionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str | None = None
+    name: str
+    bggId: int | None = None
+    description: str | None = None
+    imageUrl: str | None = None
+    minPlayers: int | None = None
+    maxPlayers: int | None = None
+    playTime: int | None = None
+    weight: float | None = None
+    yearPublished: int | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_non_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("name must not be empty")
+        return v.strip()
+
+
+class UpdateExpansionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = None
+    bggId: int | None = None
+    description: str | None = None
+    imageUrl: str | None = None
+    minPlayers: int | None = None
+    maxPlayers: int | None = None
+    playTime: int | None = None
+    weight: float | None = None
+    yearPublished: int | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_non_empty(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("name must not be empty")
+        return v.strip() if v is not None else None
+
+
+def _normalize_expansion(exp: dict[str, Any]) -> dict[str, Any]:
+    exp_id = (exp.get("id") or "").strip() or str(ULID())
+    return {
+        "id": exp_id,
+        "name": exp["name"].strip(),
+        "bggId": exp.get("bggId"),
+        "description": exp.get("description"),
+        "imageUrl": exp.get("imageUrl"),
+        "minPlayers": exp.get("minPlayers"),
+        "maxPlayers": exp.get("maxPlayers"),
+        "playTime": exp.get("playTime"),
+        "weight": exp.get("weight"),
+        "yearPublished": exp.get("yearPublished"),
+    }
+
+
 class AddGameBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
@@ -103,6 +161,7 @@ class AddGameBody(BaseModel):
     yearPublished: int | None = None
     tags: list[str] = []
     playerVariables: list[PlayerVariableDefInput] = []
+    expansions: list[ExpansionInput] = []
     trackTurnOrder: bool = False
 
 
@@ -119,11 +178,15 @@ class UpdateGameBody(BaseModel):
     yearPublished: int | None = None
     tags: list[str] | None = None
     playerVariables: list[PlayerVariableDefInput] | None = None
+    expansions: list[ExpansionInput] | None = None
     trackTurnOrder: bool | None = None
 
 
 def _game_matches_library(
-    game: dict[str, Any], target_lib: dict[str, Any], current_user_sub: str
+    game: dict[str, Any],
+    target_lib: dict[str, Any],
+    current_user_sub: str,
+    personal_lib_ids: set[str] | None = None,
 ) -> bool:
     g_lib = game.get("libraryId")
     g_owner = game.get("ownerId")
@@ -132,6 +195,8 @@ def _game_matches_library(
         return True
     if target_lib.get("isPersonal"):
         owner = target_lib["ownerId"]
+        if personal_lib_ids and g_lib in personal_lib_ids:
+            return True
         if g_lib == f"{PERSONAL_PREFIX}{owner}":
             return True
         if g_lib is None and g_owner == owner:
@@ -145,7 +210,9 @@ def _require_game_write_access(game: dict[str, Any], user: AuthUser) -> None:
     owner_id = game.get("ownerId")
     if lib_id:
         role = get_user_library_role(lib_id, user.sub, user.role)
-        if role not in ("owner", "editor"):
+        if role not in ("owner", "editor") and not (
+            owner_id == user.sub and lib_id in get_personal_library_ids_for_user(user.sub)
+        ):
             raise HTTPException(status_code=403, detail="Forbidden")
     elif owner_id and owner_id != user.sub and user.role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -161,9 +228,9 @@ def list_games_route(
         if user.role == "admin":
             games = all_games
         else:
-            personal_lib = ensure_personal_library(user.sub, user.displayName)
-            accessible_libs = {personal_lib["id"], f"{PERSONAL_PREFIX}{user.sub}"}
-            for lib in list_family_libraries():
+            ensure_personal_library(user.sub, user.displayName)
+            accessible_libs = get_personal_library_ids_for_user(user.sub)
+            for lib in list_all_libraries():
                 if get_user_library_role(lib["id"], user.sub, user.role, library=lib) is not None:
                     accessible_libs.add(lib["id"])
             games = [
@@ -190,11 +257,19 @@ def list_games_route(
         else:
             target_lib_doc = ensure_personal_library(user.sub, user.displayName)
 
-        games = [g for g in all_games if _game_matches_library(g, target_lib_doc, user.sub)]
+        personal_ids = (
+            get_personal_library_ids_for_user(target_lib_doc["ownerId"])
+            if target_lib_doc.get("isPersonal")
+            else None
+        )
+        games = [
+            g for g in all_games if _game_matches_library(g, target_lib_doc, user.sub, personal_ids)
+        ]
 
     for game in games:
         favorites = game.pop("favorites", set())
         game["isFavorited"] = user.sub in favorites
+        game.setdefault("expansions", [])
     return games
 
 
@@ -203,11 +278,14 @@ def search_games(
     _: Annotated[AuthUser, Depends(require_auth)],
     q: str | None = None,
     bggId: int | None = None,
+    type: Literal["boardgame", "boardgameexpansion"] = "boardgame",
 ):
     if bggId is not None:
         return _call_bgg(bgg_detail, bggId)
     if not q:
         raise HTTPException(status_code=400, detail="q or bggId required")
+    if type == "boardgameexpansion":
+        return _call_bgg(bgg_search_expansions, q)
     return _call_bgg(bgg_search, q)
 
 
@@ -256,6 +334,7 @@ def create_game(body: AddGameBody, user: Annotated[AuthUser, Depends(require_wri
 
     data = body.model_dump(exclude={"libraryId"})
     data["playerVariables"] = _assign_variable_ids(data["playerVariables"])
+    data["expansions"] = [_normalize_expansion(e) for e in data["expansions"]]
     game = {
         "pk": str(ULID()),
         "createdAt": datetime.now(UTC).isoformat(),
@@ -281,10 +360,80 @@ def update_game_route(
         updates["playerVariables"] = []
     if body.playerVariables is not None:
         updates["playerVariables"] = _assign_variable_ids(updates["playerVariables"])
+    if "expansions" in updates:
+        updates["expansions"] = (
+            [_normalize_expansion(e) for e in updates["expansions"]]
+            if updates["expansions"] is not None
+            else []
+        )
 
     updated = {**existing, **updates}
     put_game(updated)
     return {k: v for k, v in updated.items() if k != "favorites"}
+
+
+@router.post("/{game_id}/expansions", status_code=201)
+def add_game_expansion(
+    game_id: str, body: ExpansionInput, user: Annotated[AuthUser, Depends(require_write)]
+):
+    existing = get_game(game_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Game not found")
+    _require_game_write_access(existing, user)
+
+    expansions = list(existing.get("expansions") or [])
+    if body.bggId is not None and any(e.get("bggId") == body.bggId for e in expansions):
+        raise HTTPException(status_code=409, detail="Expansion already added to this game")
+
+    new_exp = _normalize_expansion(body.model_dump())
+    expansions.append(new_exp)
+    updated = {**existing, "expansions": expansions}
+    put_game(updated)
+    return {k: v for k, v in updated.items() if k != "favorites"}
+
+
+@router.put("/{game_id}/expansions/{expansion_id}")
+def update_game_expansion(
+    game_id: str,
+    expansion_id: str,
+    body: UpdateExpansionBody,
+    user: Annotated[AuthUser, Depends(require_write)],
+):
+    existing = get_game(game_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Game not found")
+    _require_game_write_access(existing, user)
+
+    expansions = list(existing.get("expansions") or [])
+    target = next((e for e in expansions if e.get("id") == expansion_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Expansion not found")
+
+    updates = body.model_dump(exclude_unset=True)
+    new_expansions = [
+        _normalize_expansion({**e, **updates}) if e.get("id") == expansion_id else e
+        for e in expansions
+    ]
+    updated = {**existing, "expansions": new_expansions}
+    put_game(updated)
+    return {k: v for k, v in updated.items() if k != "favorites"}
+
+
+@router.delete("/{game_id}/expansions/{expansion_id}", status_code=204)
+def delete_game_expansion(
+    game_id: str, expansion_id: str, user: Annotated[AuthUser, Depends(require_write)]
+):
+    existing = get_game(game_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Game not found")
+    _require_game_write_access(existing, user)
+
+    expansions = list(existing.get("expansions") or [])
+    if not any(e.get("id") == expansion_id for e in expansions):
+        raise HTTPException(status_code=404, detail="Expansion not found")
+
+    updated = {**existing, "expansions": [e for e in expansions if e.get("id") != expansion_id]}
+    put_game(updated)
 
 
 @router.delete("/{game_id}", status_code=204)

@@ -353,21 +353,32 @@ def test_user_in_multiple_family_libraries_and_edge_cases(fake_db):
 
     alice_personal_id = alice_libs[0]["id"]
 
-    # Personal library guards (both by unique ID and by legacy personal: prefix)
+    # Alice can rename her personal library and manage members on it without needing a family library
+    rename_personal = alice.put(
+        f"/api/libraries/{alice_personal_id}",
+        json={"name": "Alice's Vault"},
+        headers=ORIGIN,
+    )
+    assert rename_personal.status_code == 200
+    assert rename_personal.json()["name"] == "Alice's Vault"
+
+    share_personal = alice.post(
+        f"/api/libraries/{alice_personal_id}/members",
+        json={"username": "bob", "role": "readonly"},
+        headers=ORIGIN,
+    )
+    assert share_personal.status_code == 200
+    assert len(share_personal.json()["members"]) == 2
+
+    remove_bob = alice.delete(
+        f"/api/libraries/{alice_personal_id}/members/bob",
+        headers=ORIGIN,
+    )
+    assert remove_bob.status_code == 204
+
+    # Deleting the base personal library or demoting/removing its owner is still blocked
     for pid in (alice_personal_id, "personal:alice"):
-        assert (
-            alice.put(f"/api/libraries/{pid}", json={"name": "Renamed"}, headers=ORIGIN).status_code
-            == 400
-        )
         assert alice.delete(f"/api/libraries/{pid}", headers=ORIGIN).status_code == 400
-        assert (
-            alice.post(
-                f"/api/libraries/{pid}/members",
-                json={"username": "bob", "role": "readonly"},
-                headers=ORIGIN,
-            ).status_code
-            == 400
-        )
         assert (
             alice.put(
                 f"/api/libraries/{pid}/members/alice",

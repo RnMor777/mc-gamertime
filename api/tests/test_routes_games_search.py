@@ -58,6 +58,26 @@ def test_search_success_still_returns_results(authed_client, monkeypatch):
     assert resp.json() == [{"bggId": 13, "name": "Catan", "yearPublished": 1995}]
 
 
+def test_search_expansion_type_queries_boardgameexpansion(authed_client, monkeypatch):
+    captured = {}
+
+    def fake_get(url, params=None, **kwargs):
+        captured["params"] = params
+        return httpx.Response(
+            200,
+            text='<items><item id="926"><name value="Catan: Seafarers"/><yearpublished value="1997"/></item></items>',
+            request=_REQ,
+        )
+
+    monkeypatch.setattr(bgg.httpx, "get", fake_get)
+    resp = authed_client("normal").get(
+        "/api/games/search?q=Catan&type=boardgameexpansion", headers=ORIGIN
+    )
+    assert resp.status_code == 200
+    assert captured["params"] == {"query": "Catan", "type": "boardgameexpansion"}
+    assert resp.json() == [{"bggId": 926, "name": "Catan: Seafarers", "yearPublished": 1997}]
+
+
 def test_detail_malformed_number_is_502_not_404(authed_client, monkeypatch):
     _respond(
         monkeypatch,

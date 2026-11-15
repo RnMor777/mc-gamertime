@@ -122,4 +122,20 @@ describe("LibraryBar", () => {
 
     await waitFor(() => expect(api.createLibrary).toHaveBeenCalledWith("Weekend Crew"));
   });
+
+  it("allows a user with only a personal library to manage it and clears stale stored library IDs", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.getLibraries).mockResolvedValue([sampleLibraries[0]]);
+    // Simulate a stale library ID left in localStorage when the user only has their base personal library
+    setStoredLibraryId("alice", "stale-deleted-library-id");
+
+    renderBar();
+
+    const select = await screen.findByLabelText("Select library");
+    await waitFor(() => expect(select).toHaveValue("01PERSONAL_ALICE"));
+
+    // User can open Manage Library on their personal library without having any family libraries
+    await user.click(screen.getByRole("button", { name: /Manage Library/i }));
+    expect(await screen.findByText("Manage Alice's Library")).toBeInTheDocument();
+  });
 });

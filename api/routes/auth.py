@@ -19,6 +19,7 @@ from lib.auth import (
     sign_token,
     validate_password_length,
 )
+from lib.db.libraries import ensure_personal_library
 from lib.db.settings import get_settings
 from lib.db.users import get_user, record_failed_login, set_user_fields
 from lib.mailer import send_email
@@ -228,6 +229,8 @@ def login(request: Request, body: LoginBody, response: Response):
 
     if user.get("failedAttempts"):
         set_user_fields(user["pk"], {"failedAttempts": 0, "lastFailureAt": None})
+
+    ensure_personal_library(user["pk"], user.get("displayName"))
 
     auth_user = AuthUser(
         sub=body.username,

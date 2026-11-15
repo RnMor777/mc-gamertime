@@ -209,11 +209,14 @@ _SECURITY_HEADERS = {
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
     "Content-Security-Policy": (
-        "default-src 'self'; img-src 'self' https: data:; "
-        "object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+        "default-src 'self'; "
+        "img-src 'self' https://cf.geekdo-images.com data:; "
+        "connect-src 'self' https://cf.geekdo-images.com; "
+        "object-src 'none'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self';"
     ),
 }
-
 
 @app.middleware("http")
 async def origin_guard(request: Request, call_next):

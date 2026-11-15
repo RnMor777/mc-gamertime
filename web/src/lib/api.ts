@@ -7,6 +7,7 @@ import type {
   BggSearchResult,
   CommentItem,
   Game,
+  GameExpansionInput,
   Library,
   LibraryRole,
   NotificationsResponse,
@@ -227,8 +228,42 @@ export function searchBgg(q: string): Promise<BggSearchResult[]> {
   return apiFetch(`/games/search?q=${encodeURIComponent(q)}`);
 }
 
+export function searchBggExpansions(q: string): Promise<BggSearchResult[]> {
+  return apiFetch(`/games/search?q=${encodeURIComponent(q)}&type=boardgameexpansion`);
+}
+
 export function getBggDetail(bggId: number): Promise<BggGameDetail> {
   return apiFetch(`/games/search?bggId=${bggId}`);
+}
+
+export function addGameExpansion(gameId: string, expansion: GameExpansionInput): Promise<Game> {
+  return apiFetch(`/games/${encodeURIComponent(gameId)}/expansions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(expansion),
+  });
+}
+
+export function updateGameExpansion(
+  gameId: string,
+  expansionId: string,
+  data: Partial<GameExpansionInput>,
+): Promise<Game> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameId)}/expansions/${encodeURIComponent(expansionId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export function deleteGameExpansion(gameId: string, expansionId: string): Promise<void> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameId)}/expansions/${encodeURIComponent(expansionId)}`,
+    { method: "DELETE" },
+  );
 }
 
 // Players

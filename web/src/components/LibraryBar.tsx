@@ -162,7 +162,7 @@ export function LibraryBar({ compact = false }: { compact?: boolean }) {
         </select>
         {activeLibrary && (
           <Badge variant="secondary" className="text-xs shrink-0">
-            {activeLibrary.isPersonal
+            {activeLibrary.isPersonal && activeLibrary.members.length <= 1
               ? "Private"
               : `${ROLE_LABELS[activeLibrary.myRole]} · ${activeLibrary.members.length} member${activeLibrary.members.length === 1 ? "" : "s"}`}
           </Badge>
@@ -171,7 +171,7 @@ export function LibraryBar({ compact = false }: { compact?: boolean }) {
 
       {!compact && (
         <div className="flex items-center gap-1.5 ml-auto">
-          {isFamily && (
+          {activeLibrary && (
             <Button
               type="button"
               variant="outline"
@@ -180,7 +180,11 @@ export function LibraryBar({ compact = false }: { compact?: boolean }) {
               className="gap-1.5 h-8 text-xs"
             >
               {canManageActiveLibrary ? <Settings2 size={14} /> : <Users size={14} />}
-              {canManageActiveLibrary ? "Manage Family" : "Family Members"}
+              {canManageActiveLibrary
+                ? isFamily
+                  ? "Manage Family"
+                  : "Manage Library"
+                : "Library Members"}
             </Button>
           )}
           {canCreateLibrary && (
@@ -236,7 +240,7 @@ export function LibraryBar({ compact = false }: { compact?: boolean }) {
       </Dialog>
 
       <Dialog
-        open={showManage && isFamily}
+        open={showManage && !!activeLibrary}
         onClose={() => setShowManage(false)}
         title={
           canManageActiveLibrary
@@ -370,28 +374,32 @@ export function LibraryBar({ compact = false }: { compact?: boolean }) {
             </div>
 
             <div className="flex items-center justify-between pt-2 border-t">
-              {canManageActiveLibrary ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleDeleteLibrary}
-                  disabled={deleteLibrary.isPending}
-                  className="gap-1.5"
-                >
-                  <Trash2 size={14} />
-                  Delete Library
-                </Button>
+              {isFamily ? (
+                canManageActiveLibrary ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDeleteLibrary}
+                    disabled={deleteLibrary.isPending}
+                    className="gap-1.5"
+                  >
+                    <Trash2 size={14} />
+                    Delete Library
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleLeaveLibrary}
+                    disabled={removeMember.isPending}
+                  >
+                    Leave Library
+                  </Button>
+                )
               ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleLeaveLibrary}
-                  disabled={removeMember.isPending}
-                >
-                  Leave Library
-                </Button>
+                <span className="text-xs text-muted-foreground">Personal base library</span>
               )}
               <Button
                 type="button"

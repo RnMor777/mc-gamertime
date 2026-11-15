@@ -7,6 +7,19 @@ export interface PlayerVariableInput {
   label: string;
   options: string[];
 }
+export interface GameExpansion {
+  id: string;
+  name: string;
+  bggId?: number | null;
+  description?: string | null;
+  imageUrl?: string | null;
+  minPlayers?: number | null;
+  maxPlayers?: number | null;
+  playTime?: number | null;
+  weight?: number | null;
+  yearPublished?: number | null;
+}
+export type GameExpansionInput = Omit<GameExpansion, "id"> & { id?: string };
 export interface Game {
   pk: string;
   name: string;
@@ -24,6 +37,7 @@ export interface Game {
   createdAt: string;
   isFavorited?: boolean;
   playerVariables?: PlayerVariableDef[];
+  expansions?: GameExpansion[];
   trackTurnOrder?: boolean;
 }
 export interface Player {

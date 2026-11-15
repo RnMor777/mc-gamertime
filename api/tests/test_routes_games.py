@@ -356,3 +356,92 @@ def test_upload_url_readonly_forbidden(authed_client):
         headers=ORIGIN,
     )
     assert resp.status_code == 403
+
+
+def test_game_expansions_crud(authed_client, fake_db):
+    fake_db["games"].seed(
+        {"pk": "01GAME", "name": "Catan", "tags": [], "createdAt": "2026-01-01T00:00:00Z"}
+    )
+    c = authed_client("admin")
+
+    # Add expansion from BGG metadata
+    resp = c.post(
+        "/api/games/01GAME/expansions",
+        json={
+            "name": "Catan: Seafarers",
+            "bggId": 926,
+            "yearPublished": 1997,
+            "description": "Sail across the seas of Catan.",
+            "imageUrl": "https://example.com/seafarers.jpg",
+            "minPlayers": 3,
+            "maxPlayers": 4,
+            "playTime": 90,
+            "weight": 2.4,
+        },
+        headers=ORIGIN,
+    )
+    assert resp.status_code == 201
+    game = resp.json()
+    assert len(game["expansions"]) == 1
+    exp_id = game["expansions"][0]["id"]
+    assert exp_id
+    assert game["expansions"][0]["name"] == "Catan: Seafarers"
+    assert game["expansions"][0]["bggId"] == 926
+    assert game["expansions"][0]["description"] == "Sail across the seas of Catan."
+
+    # Duplicate bggId rejected with 409
+    dup = c.post(
+        "/api/games/01GAME/expansions",
+        json={"name": "Catan: Seafarers", "bggId": 926},
+        headers=ORIGIN,
+    )
+    assert dup.status_code == 409
+
+    # Add manual expansion (no bggId)
+    manual = c.post(
+        "/api/games/01GAME/expansions",
+        json={"name": "Custom Fan Expansion", "description": "Home-printed map"},
+        headers=ORIGIN,
+    )
+    assert manual.status_code == 201
+    assert len(manual.json()["expansions"]) == 2
+
+    # Update expansion
+    upd = c.put(
+        f"/api/games/01GAME/expansions/{exp_id}",
+        json={"name": "Catan: Seafarers (5-6 Player)", "maxPlayers": 6},
+        headers=ORIGIN,
+    )
+    assert upd.status_code == 200
+    updated_exp = next(e for e in upd.json()["expansions"] if e["id"] == exp_id)
+    assert updated_exp["name"] == "Catan: Seafarers (5-6 Player)"
+    assert updated_exp["maxPlayers"] == 6
+
+    # Delete expansion
+    delete_resp = c.delete(f"/api/games/01GAME/expansions/{exp_id}", headers=ORIGIN)
+    assert delete_resp.status_code == 204
+
+    games_list = c.get("/api/games", headers=ORIGIN).json()
+    assert len(games_list[0]["expansions"]) == 1
+    assert games_list[0]["expansions"][0]["name"] == "Custom Fan Expansion"
+
+
+def test_game_expansions_not_found_and_validation(authed_client, fake_db):
+    fake_db["games"].seed(
+        {"pk": "01GAME", "name": "Catan", "tags": [], "createdAt": "2026-01-01T00:00:00Z"}
+    )
+    c = authed_client("admin")
+
+    assert (
+        c.post("/api/games/NOPE/expansions", json={"name": "Exp"}, headers=ORIGIN).status_code
+        == 404
+    )
+    assert (
+        c.post("/api/games/01GAME/expansions", json={"name": "   "}, headers=ORIGIN).status_code
+        == 422
+    )
+    assert (
+        c.put("/api/games/01GAME/expansions/NOPE", json={"name": "X"}, headers=ORIGIN).status_code
+        == 404
+    )
+    assert c.delete("/api/games/01GAME/expansions/NOPE", headers=ORIGIN).status_code == 404

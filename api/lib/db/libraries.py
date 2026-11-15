@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 from typing import Any
 
@@ -11,6 +12,7 @@ from lib.db.users import get_user, set_user_fields
 
 _PREFIX = "library#"
 PERSONAL_PREFIX = "personal:"
+_personal_lib_lock = threading.Lock()
 
 
 def normalize_library_role(role: str | None) -> str:
@@ -58,8 +60,22 @@ def get_personal_library_for_user(username: str) -> dict[str, Any] | None:
 
     for lib in list_all_libraries():
         if lib.get("isPersonal") and lib.get("ownerId") == username:
+            if user is not None and user.get("personalLibraryId") != lib["id"]:
+                set_user_fields(username, {"personalLibraryId": lib["id"]})
             return lib
     return None
+
+
+def get_personal_library_ids_for_user(username: str) -> set[str]:
+    """Return all library IDs that represent `username`'s personal library (including legacy/race IDs)."""
+    ids: set[str] = {f"{PERSONAL_PREFIX}{username}"}
+    user = get_user(username)
+    if user and user.get("personalLibraryId"):
+        ids.add(str(user["personalLibraryId"]))
+    for lib in list_all_libraries():
+        if lib.get("isPersonal") and lib.get("ownerId") == username:
+            ids.add(str(lib["id"]))
+    return ids
 
 
 def create_personal_library_for_user(
@@ -82,15 +98,16 @@ def create_personal_library_for_user(
 
 def ensure_personal_library(username: str, display_name: str | None = None) -> dict[str, Any]:
     """Return the user's personal library, creating a unique one if none exists yet."""
-    existing = get_personal_library_for_user(username)
-    if existing is not None:
-        return existing
-    user = get_user(username)
-    resolved_name = display_name or (user.get("displayName") if user else None) or username
-    created = create_personal_library_for_user(username, str(resolved_name))
-    if user is not None:
-        set_user_fields(username, {"personalLibraryId": created["id"]})
-    return created
+    with _personal_lib_lock:
+        existing = get_personal_library_for_user(username)
+        if existing is not None:
+            return existing
+        user = get_user(username)
+        resolved_name = display_name or (user.get("displayName") if user else None) or username
+        created = create_personal_library_for_user(username, str(resolved_name))
+        if user is not None:
+            set_user_fields(username, {"personalLibraryId": created["id"]})
+        return created
 
 
 def is_personal_library(library_id: str, library: dict[str, Any] | None = None) -> bool:
@@ -129,10 +146,8 @@ def get_user_library_role(
     if not lib:
         return None
 
-    if lib.get("isPersonal"):
-        if lib.get("ownerId") == username or app_role == "admin":
-            return "owner"
-        return None
+    if lib.get("isPersonal") and (lib.get("ownerId") == username or app_role == "admin"):
+        return "owner"
 
     member_role: str | None = None
     for m in lib.get("members", []):

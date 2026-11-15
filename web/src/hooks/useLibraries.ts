@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import {
   addLibraryMember,
@@ -100,10 +100,17 @@ export function useLibraries() {
 
   const libraries =
     query.data && query.data.length > 0 ? query.data : fallbackPersonal ? [fallbackPersonal] : [];
+  const matchedStored = storedId ? libraries.find((l) => l.id === storedId) : undefined;
   const activeLibrary =
-    (storedId ? libraries.find((l) => l.id === storedId) : libraries.find((l) => l.isPersonal)) ??
-    libraries[0] ??
-    fallbackPersonal;
+    matchedStored ?? libraries.find((l) => l.isPersonal) ?? libraries[0] ?? fallbackPersonal;
+
+  useEffect(() => {
+    if (!user?.sub || !storedId || !query.data || query.data.length === 0) return;
+    const match = query.data.find((l) => l.id === storedId);
+    if (!match || match.isPersonal) {
+      setStoredLibraryId(user.sub, null);
+    }
+  }, [user?.sub, storedId, query.data]);
 
   const canEditActiveLibrary = Boolean(
     user &&
@@ -114,10 +121,7 @@ export function useLibraries() {
   );
 
   const canManageActiveLibrary = Boolean(
-    user &&
-    activeLibrary &&
-    !activeLibrary.isPersonal &&
-    (user.role === "admin" || activeLibrary.myRole === "owner"),
+    user && activeLibrary && (user.role === "admin" || activeLibrary.myRole === "owner"),
   );
 
   const handleSetActiveLibraryId = useCallback(
@@ -131,13 +135,15 @@ export function useLibraries() {
     [personalId, setActiveLibraryId],
   );
 
+  const selectedFamilyLibraryId =
+    matchedStored && !matchedStored.isPersonal ? matchedStored.id : undefined;
+
   return {
     ...query,
     libraries,
     activeLibrary,
     activeLibraryId: activeLibrary?.id ?? personalId,
-    selectedFamilyLibraryId:
-      storedId && activeLibrary && !activeLibrary.isPersonal ? activeLibrary.id : undefined,
+    selectedFamilyLibraryId,
     setActiveLibraryId: handleSetActiveLibraryId,
     canEditActiveLibrary,
     canManageActiveLibrary,
