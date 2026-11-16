@@ -266,6 +266,25 @@ export function deleteGameExpansion(gameId: string, expansionId: string): Promis
   );
 }
 
+export function uploadGameRulebook(gameId: string, file: File, name?: string): Promise<Game> {
+  const params = new URLSearchParams({ filename: file.name || "rulebook.pdf" });
+  if (name?.trim()) {
+    params.set("name", name.trim());
+  }
+  return apiFetch(`/games/${encodeURIComponent(gameId)}/rulebooks?${params.toString()}`, {
+    method: "POST",
+    headers: { "Content-Type": file.type || "application/pdf" },
+    body: file,
+  });
+}
+
+export function deleteGameRulebook(gameId: string, rulebookId: string): Promise<void> {
+  return apiFetch(
+    `/games/${encodeURIComponent(gameId)}/rulebooks/${encodeURIComponent(rulebookId)}`,
+    { method: "DELETE" },
+  );
+}
+
 // Players
 export function getPlayers(): Promise<Player[]> {
   return apiFetch("/players");

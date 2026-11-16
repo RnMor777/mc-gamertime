@@ -4,8 +4,10 @@ import {
   addGameExpansion,
   deleteGame,
   deleteGameExpansion,
+  deleteGameRulebook,
   getGames,
   updateGame,
+  uploadGameRulebook,
 } from "../lib/api";
 import { useAuth } from "../lib/AuthContext";
 import type { GameExpansionInput } from "../lib/types";
@@ -75,5 +77,33 @@ export function useDeleteGameExpansion() {
     },
     onError: (err) =>
       toast.error(err instanceof Error && err.message ? err.message : "Failed to remove expansion"),
+  });
+}
+
+export function useUploadGameRulebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ gameId, file, name }: { gameId: string; file: File; name?: string }) =>
+      uploadGameRulebook(gameId, file, name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["games"] });
+      toast.success("Rulebook uploaded");
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error && err.message ? err.message : "Failed to upload rulebook"),
+  });
+}
+
+export function useDeleteGameRulebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ gameId, rulebookId }: { gameId: string; rulebookId: string }) =>
+      deleteGameRulebook(gameId, rulebookId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["games"] });
+      toast.success("Rulebook removed");
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error && err.message ? err.message : "Failed to remove rulebook"),
   });
 }

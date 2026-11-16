@@ -4,6 +4,7 @@ import {
   Clock,
   Dices,
   ExternalLink,
+  FileText,
   Gauge,
   Layers,
   PenLine,
@@ -12,11 +13,13 @@ import {
   Star,
   Trash2,
   Trophy,
+  Upload,
   Users,
   Users2,
 } from "lucide-react";
-import { useState } from "react";
+import { type ChangeEvent, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import { AddExpansionDialog } from "../components/AddExpansionDialog";
 import { Avatar } from "../components/Avatar";
 import { GameConfigDialog } from "../components/GameConfigDialog";
@@ -27,12 +30,24 @@ import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Skeleton } from "../components/ui/skeleton";
 import { useCountUp } from "../hooks/useCountUp";
-import { useDeleteGameExpansion, useGames } from "../hooks/useGames";
+import {
+  useDeleteGameExpansion,
+  useDeleteGameRulebook,
+  useGames,
+  useUploadGameRulebook,
+} from "../hooks/useGames";
 import { useLibraries } from "../hooks/useLibraries";
 import { usePosts } from "../hooks/usePosts";
 import { useResults } from "../hooks/useResults";
-import type { GameExpansion, Result } from "../lib/types";
+import type { GameExpansion, GameRulebook, Result } from "../lib/types";
 import { formatDate, idFromPk } from "../lib/utils";
+
+function formatFileSize(bytes?: number): string {
+  if (bytes == null || Number.isNaN(bytes)) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -44,7 +59,12 @@ export default function GameDetailPage() {
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showAddExpansionDialog, setShowAddExpansionDialog] = useState(false);
   const [activeExpansion, setActiveExpansion] = useState<GameExpansion | null>(null);
+  const [activeRulebook, setActiveRulebook] = useState<GameRulebook | null>(null);
+  const [rulebookError, setRulebookError] = useState<string | null>(null);
+  const rulebookInputRef = useRef<HTMLInputElement>(null);
   const deleteExpansion = useDeleteGameExpansion();
+  const uploadRulebook = useUploadGameRulebook();
+  const deleteRulebook = useDeleteGameRulebook();
 
   const game = games.find((g) => idFromPk(g.pk) === id);
   const gamePk = game?.pk ?? "";
@@ -111,6 +131,26 @@ export default function GameDetailPage() {
 
   const bggUrl = game.bggId ? `https://boardgamegeek.com/boardgame/${game.bggId}` : undefined;
   const sortedResults = [...gameResults].sort((a, b) => b.date.localeCompare(a.date));
+
+  const handleRulebookFilesChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!files.length) return;
+    setRulebookError(null);
+    for (const file of files) {
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      if (!isPdf) {
+        const msg = "Only PDF files (.pdf) are allowed.";
+        setRulebookError(msg);
+        toast.error(msg);
+        continue;
+      }
+      await uploadRulebook.mutateAsync({
+        gameId: idFromPk(game.pk),
+        file,
+      });
+    }
+  };
 
   return (
     <PageTransition>
@@ -221,6 +261,99 @@ export default function GameDetailPage() {
             </p>
           </section>
         )}
+
+        <section aria-labelledby="game-rulebooks-heading">
+          <div className="flex items-center justify-between mb-3">
+            <h2
+              id="game-rulebooks-heading"
+              className="text-lg font-display font-semibold flex items-center gap-2"
+            >
+              <FileText size={18} className="text-primary" />
+              Rulebooks
+              {(game.rulebooks?.length ?? 0) > 0 && (
+                <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                  {game.rulebooks?.length}
+                </span>
+              )}
+            </h2>
+            {canEditActiveLibrary && (
+              <>
+                <input
+                  ref={rulebookInputRef}
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  multiple
+                  className="hidden"
+                  data-testid="rulebook-file-input"
+                  onChange={handleRulebookFilesChange}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  isLoading={uploadRulebook.isPending}
+                  onClick={() => rulebookInputRef.current?.click()}
+                  className="gap-1.5"
+                >
+                  <Upload size={14} />
+                  Upload PDF
+                </Button>
+              </>
+            )}
+          </div>
+
+          {rulebookError && <p className="text-xs text-destructive mb-2">{rulebookError}</p>}
+
+          {!game.rulebooks || game.rulebooks.length === 0 ? (
+            <div className="rounded-lg border bg-card/50 p-4 text-sm text-muted-foreground flex items-center justify-between gap-2">
+              <span>No rulebooks uploaded for this game yet.</span>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {game.rulebooks.map((rb) => (
+                <div
+                  key={rb.id}
+                  className="rounded-lg border bg-card p-3 hover:border-primary/30 transition-colors flex items-center justify-between gap-3"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActiveRulebook(rb)}
+                    className="flex items-center gap-3 min-w-0 flex-1 text-left group"
+                  >
+                    <div className="shrink-0 rounded-md w-10 h-10 bg-primary/10 text-primary flex items-center justify-center">
+                      <FileText size={18} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-display font-semibold text-sm group-hover:text-primary transition-colors truncate">
+                        {rb.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {rb.filename}
+                        {rb.size != null && ` · ${formatFileSize(rb.size)}`}
+                      </div>
+                    </div>
+                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {canEditActiveLibrary && (
+                      <button
+                        type="button"
+                        aria-label={`Remove ${rb.name}`}
+                        onClick={() =>
+                          deleteRulebook.mutate({
+                            gameId: idFromPk(game.pk),
+                            rulebookId: rb.id,
+                          })
+                        }
+                        className="text-muted-foreground hover:text-destructive p-1.5 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         <section aria-labelledby="game-expansions-heading">
           <div className="flex items-center justify-between mb-3">
@@ -624,6 +757,55 @@ export default function GameDetailPage() {
               <Button variant="outline" size="sm" onClick={() => setActiveExpansion(null)}>
                 Close
               </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+      <Dialog
+        open={!!activeRulebook}
+        onClose={() => setActiveRulebook(null)}
+        title={activeRulebook?.name ?? "Rulebook"}
+        className="max-w-4xl"
+      >
+        {activeRulebook && (
+          <div className="space-y-4">
+            <iframe
+              src={activeRulebook.url}
+              title={activeRulebook.name}
+              className="w-full h-[70vh] rounded-md border bg-muted"
+            />
+            <div className="flex items-center justify-between gap-2">
+              <a
+                href={activeRulebook.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+              >
+                <ExternalLink size={13} />
+                Open PDF in new tab
+              </a>
+              <div className="flex items-center gap-2">
+                {canEditActiveLibrary && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    isLoading={deleteRulebook.isPending}
+                    onClick={async () => {
+                      await deleteRulebook.mutateAsync({
+                        gameId: idFromPk(game.pk),
+                        rulebookId: activeRulebook.id,
+                      });
+                      setActiveRulebook(null);
+                    }}
+                  >
+                    <Trash2 size={14} className="mr-1.5" />
+                    Remove Rulebook
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => setActiveRulebook(null)}>
+                  Close
+                </Button>
+              </div>
             </div>
           </div>
         )}

@@ -93,9 +93,8 @@ docker run -d -p 127.0.0.1:4263:4263 --user "$(id -u):$(id -g)" \
 
 Create the directory first and run as your own user: Docker creates a missing bind-mount
 directory owned by `root`, and the image runs unprivileged, so without those two lines the
-container exits with `cannot create /data/.jwt_secret: Permission denied`. Compose handles
-this with the `mc-gamertime-init` container. Mount `/data` as shown, or the database and
-generated JWT secret vanish with the container.
+container exits with `cannot create /data/.jwt_secret: Permission denied`. Mount `/data` as
+shown, or the database and generated JWT secret vanish with the container.
 </Aside>
 
 <Aside type="tip">
@@ -114,9 +113,8 @@ Then point `image:` in your `docker-compose.yml` at `mc-gamertime-local` before 
 | Container | Role | Port (internal) |
 |---|---|---|
 | `mc-gamertime` | FastAPI + React frontend, embedded SQLite, local filesystem storage | 4263 |
-| `mc-gamertime-init` | One-shot, fixes ownership on `config/app` then exits | none |
 
-Only `mc-gamertime` is exposed, at `127.0.0.1:4263` on the host (loopback only unless you set `APP_BIND`).
+`mc-gamertime` is exposed at `127.0.0.1:4263` on the host (loopback only unless you set `APP_BIND`).
 
 ## docker-compose.yml
 

@@ -15,8 +15,7 @@ Run `docker compose logs mc-gamertime`. If the last line is
 
 the bind-mounted `config/app/` is not writable by the user the container runs as. Check
 its owner with `ls -ld config/app` and set `PUID`/`PGID` in `.env` to match (`id -u` /
-`id -g`), then `docker compose up -d` — the init container re-applies the ownership on
-every start.
+`id -g`), then `docker compose up -d`.
 
 ## Every request returns 503, but the container is "healthy"
 

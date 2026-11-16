@@ -63,6 +63,7 @@ def fake_db(monkeypatch, tmp_path):
     # Distinct filename: tests get the same tmp_path and some build their
     # own SQLite file in it (tests/test_migrations.py).
     db_path = str(tmp_path / "conftest-tables.db")
+    monkeypatch.setenv("RULEBOOKS_STORAGE_DIR", str(tmp_path / "rulebooks"))
     new_tables: dict = {name: SeedableTable(db_path, name) for name in _TABLE_NAMES}
     import lib.db.base as db_base
 

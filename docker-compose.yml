@@ -1,30 +1,7 @@
 services:
-  mc-gamertime-init:
-    container_name: mc-gamertime-init
-    image: alpine:3
-    user: root
-    command: >-
-      sh -c "mkdir -p /config/app &&
-      chown -R ${PUID:-1000}:${PGID:-1000} /config/app"
-    volumes:
-      - ./config:/config
-    restart: "no"
-    deploy:
-      resources:
-        limits:
-          memory: 32m
-          cpus: "0.1"
-    security_opt:
-      - no-new-privileges:true
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-    cap_drop: [ALL]
-
   mc-gamertime:
     container_name: mc-gamertime
     image: ghcr.io/strandgaard96/mc-gamertime:latest
-    # Must match init's chown target above, or the app can't write /data.
     user: "${PUID:-1000}:${PGID:-1000}"
     ports:
       # APP_BIND=127.0.0.1 (default) keeps the port loopback-only for a reverse proxy on
@@ -60,12 +37,11 @@ services:
       OIDC_DEFAULT_ROLE: ${OIDC_DEFAULT_ROLE:-}
       OIDC_ADMIN_GROUP: ${OIDC_ADMIN_GROUP:-}
       OIDC_ADMIN_EMAILS: ${OIDC_ADMIN_EMAILS:-}
+      RULEBOOKS_STORAGE_DIR: ${RULEBOOKS_STORAGE_DIR:-/data/rulebooks}
     volumes:
       - ./config/app:/data
+      - ./config/rulebooks:/data/rulebooks
     restart: unless-stopped
-    depends_on:
-      mc-gamertime-init:
-        condition: service_completed_successfully
     deploy:
       resources:
         limits:

@@ -20,6 +20,14 @@ export interface GameExpansion {
   yearPublished?: number | null;
 }
 export type GameExpansionInput = Omit<GameExpansion, "id"> & { id?: string };
+export interface GameRulebook {
+  id: string;
+  name: string;
+  filename: string;
+  url: string;
+  size?: number;
+  uploadedAt: string;
+}
 export interface Game {
   pk: string;
   name: string;
@@ -38,6 +46,7 @@ export interface Game {
   isFavorited?: boolean;
   playerVariables?: PlayerVariableDef[];
   expansions?: GameExpansion[];
+  rulebooks?: GameRulebook[];
   trackTurnOrder?: boolean;
 }
 export interface Player {

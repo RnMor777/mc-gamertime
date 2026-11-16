@@ -1,3 +1,4 @@
+import contextlib
 import os
 import re
 from collections.abc import Callable
@@ -7,7 +8,8 @@ from xml.etree.ElementTree import ParseError
 
 import httpx
 from defusedxml import DefusedXmlException
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, field_validator
 from ulid import ULID
 
@@ -33,7 +35,21 @@ from lib.db.libraries import (
 )
 from lib.db.recs import list_recs
 from lib.db.results import list_results
-from lib.storage import EXT_BY_CONTENT_TYPE, build_upload_url, get_object_base_url, make_s3_client
+from lib.storage import (
+    EXT_BY_CONTENT_TYPE,
+    MAX_RULEBOOK_BYTES,
+    build_upload_url,
+    get_object_base_url,
+    make_rulebooks_client,
+    make_s3_client,
+)
+
+try:
+    from botocore.exceptions import ClientError
+
+    _NOT_FOUND_ERRORS: tuple[type[Exception], ...] = (ClientError, FileNotFoundError)
+except ImportError:  # pragma: no cover - only true inside the selfhost image
+    _NOT_FOUND_ERRORS = (FileNotFoundError,)
 
 router = APIRouter()
 
@@ -218,6 +234,35 @@ def _require_game_write_access(game: dict[str, Any], user: AuthUser) -> None:
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
+def _require_game_read_access(game: dict[str, Any], user: AuthUser) -> None:
+    if user.role == "admin":
+        return
+    lib_id = game.get("libraryId")
+    owner_id = game.get("ownerId")
+    if lib_id:
+        if lib_id.startswith(PERSONAL_PREFIX):
+            if lib_id.removeprefix(PERSONAL_PREFIX) == user.sub:
+                return
+            raise HTTPException(status_code=403, detail="Forbidden")
+        if lib_id in get_personal_library_ids_for_user(user.sub):
+            return
+        if get_user_library_role(lib_id, user.sub, user.role) is not None:
+            return
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if owner_id not in (None, user.sub):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _sanitize_pdf_filename(raw_filename: str) -> str:
+    base = os.path.basename(raw_filename.replace("\\", "/")).strip()
+    safe = re.sub(r"[^a-zA-Z0-9._\-\s()]", "", base).strip()
+    if not safe:
+        safe = "rulebook.pdf"
+    if not safe.lower().endswith(".pdf"):
+        safe = f"{safe}.pdf"
+    return safe
+
+
 @router.get("")
 def list_games_route(
     user: Annotated[AuthUser, Depends(require_auth)],
@@ -270,6 +315,7 @@ def list_games_route(
         favorites = game.pop("favorites", set())
         game["isFavorited"] = user.sub in favorites
         game.setdefault("expansions", [])
+        game.setdefault("rulebooks", [])
     return games
 
 
@@ -340,6 +386,7 @@ def create_game(body: AddGameBody, user: Annotated[AuthUser, Depends(require_wri
         "createdAt": datetime.now(UTC).isoformat(),
         "libraryId": target_lib,
         "ownerId": user.sub,
+        "rulebooks": [],
         **data,
     }
     put_game(game)
@@ -436,6 +483,133 @@ def delete_game_expansion(
     put_game(updated)
 
 
+@router.post("/{game_id}/rulebooks", status_code=201)
+async def upload_game_rulebook(
+    game_id: str,
+    request: Request,
+    user: Annotated[AuthUser, Depends(require_write)],
+    filename: str = "rulebook.pdf",
+    name: str | None = None,
+):
+    existing = get_game(game_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Game not found")
+    _require_game_write_access(existing, user)
+
+    content_type = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+    if content_type and content_type not in ("application/pdf", "application/octet-stream"):
+        raise HTTPException(status_code=415, detail="Only PDF files are allowed")
+    if not filename.strip().lower().endswith(".pdf"):
+        raise HTTPException(status_code=422, detail="Only PDF files are allowed (.pdf)")
+
+    declared = int(request.headers.get("content-length") or 0)
+    if declared > MAX_RULEBOOK_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"PDF file too large (max {MAX_RULEBOOK_BYTES // (1024 * 1024)} MB)",
+        )
+
+    pdf_bytes = await request.body()
+    if not pdf_bytes:
+        raise HTTPException(status_code=422, detail="No PDF file provided")
+    if len(pdf_bytes) > MAX_RULEBOOK_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"PDF file too large (max {MAX_RULEBOOK_BYTES // (1024 * 1024)} MB)",
+        )
+    if not pdf_bytes.startswith(b"%PDF-"):
+        raise HTTPException(
+            status_code=422, detail="Invalid PDF file: only valid PDF files are allowed"
+        )
+
+    safe_filename = _sanitize_pdf_filename(filename)
+    default_title = safe_filename[:-4].strip() or "Rulebook"
+    display_name = (name or "").strip() or default_title
+
+    rulebook_id = str(ULID())
+    key = f"{game_id}/{rulebook_id}.pdf"
+    make_rulebooks_client().put_object(
+        Bucket=_BUCKET,
+        Key=key,
+        Body=pdf_bytes,
+        ContentType="application/pdf",
+    )
+
+    new_rulebook = {
+        "id": rulebook_id,
+        "name": display_name,
+        "filename": safe_filename,
+        "url": f"/api/games/{game_id}/rulebooks/{rulebook_id}/file",
+        "size": len(pdf_bytes),
+        "uploadedAt": datetime.now(UTC).isoformat(),
+    }
+    rulebooks = list(existing.get("rulebooks") or [])
+    rulebooks.append(new_rulebook)
+    updated = {**existing, "rulebooks": rulebooks}
+    put_game(updated)
+    return {k: v for k, v in updated.items() if k != "favorites"}
+
+
+@router.get("/{game_id}/rulebooks/{rulebook_id}/file")
+def get_game_rulebook_file(
+    game_id: str,
+    rulebook_id: str,
+    user: Annotated[AuthUser, Depends(require_auth)],
+):
+    existing = get_game(game_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Game not found")
+    _require_game_read_access(existing, user)
+
+    rulebooks = list(existing.get("rulebooks") or [])
+    target = next((r for r in rulebooks if r.get("id") == rulebook_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Rulebook not found")
+
+    key = f"{game_id}/{rulebook_id}.pdf"
+    try:
+        obj = make_rulebooks_client().get_object(Bucket=_BUCKET, Key=key)
+    except _NOT_FOUND_ERRORS:
+        raise HTTPException(status_code=404, detail="Rulebook file not found") from None
+
+    safe_filename = _sanitize_pdf_filename(target.get("filename") or "rulebook.pdf")
+    return StreamingResponse(
+        obj["Body"].iter_chunks(),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{safe_filename}"',
+            "X-Frame-Options": "SAMEORIGIN",
+            "Content-Security-Policy": (
+                "default-src 'self'; object-src 'self' blob:; frame-ancestors 'self'; base-uri 'self';"
+            ),
+        },
+    )
+
+
+@router.delete("/{game_id}/rulebooks/{rulebook_id}", status_code=204)
+def delete_game_rulebook(
+    game_id: str,
+    rulebook_id: str,
+    user: Annotated[AuthUser, Depends(require_write)],
+):
+    existing = get_game(game_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Game not found")
+    _require_game_write_access(existing, user)
+
+    rulebooks = list(existing.get("rulebooks") or [])
+    if not any(r.get("id") == rulebook_id for r in rulebooks):
+        raise HTTPException(status_code=404, detail="Rulebook not found")
+
+    updated = {
+        **existing,
+        "rulebooks": [r for r in rulebooks if r.get("id") != rulebook_id],
+    }
+    put_game(updated)
+    with contextlib.suppress(Exception):
+        make_rulebooks_client().delete_object(Bucket=_BUCKET, Key=f"{game_id}/{rulebook_id}.pdf")
+
+
 @router.delete("/{game_id}", status_code=204)
 def delete_game_route(game_id: str, user: Annotated[AuthUser, Depends(require_write)]):
     existing = get_game(game_id)
@@ -454,6 +628,11 @@ def delete_game_route(game_id: str, user: Annotated[AuthUser, Depends(require_wr
                 f"and {rec_refs} recommendation(s). Delete those first."
             ),
         )
+    for rb in existing.get("rulebooks") or []:
+        rb_id = rb.get("id")
+        if rb_id:
+            with contextlib.suppress(Exception):
+                make_rulebooks_client().delete_object(Bucket=_BUCKET, Key=f"{game_id}/{rb_id}.pdf")
     delete_game(game_id)
 
 

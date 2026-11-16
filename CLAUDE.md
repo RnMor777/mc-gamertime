@@ -201,7 +201,7 @@ The project includes a **"Full Stack" VS Code Launch Configuration**:
 
 ## Dev Environment
 
-- Compose service names equal container names: `mc-gamertime` / `mc-gamertime-init` — `docker compose exec|logs mc-gamertime`.
+- Compose service name equals container name: `mc-gamertime` — `docker compose exec|logs mc-gamertime`.
 - GitHub Discussions is deliberately OFF for this repo — questions go to Issues (`blank_issues_enabled: true`); don't add Discussions links.
 - Separate Terraform workspace `dev` (prod = `default`) — `terraform.workspace`-derived `env_suffix`/`fqdn`/`name_prefix` make every resource name/domain workspace-specific, zero-diff for prod
 - Commands: `task plan:dev`, `task apply:dev` (terraform only), `task deploy:dev` (test + build + apply + S3 sync + CF invalidation) — all auto-select `dev` workspace and switch back to `default` after

@@ -66,10 +66,10 @@ COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 RUN useradd -m -u 1000 appuser \
-    && mkdir -p /data \
+    && mkdir -p /data /data/rulebooks \
     && chown -R appuser:appuser /app /data
 
-VOLUME /data
+VOLUME ["/data", "/data/rulebooks"]
 USER appuser
 
 # Probe /api/health, not just the socket: a failed _initialize() (fresh DB with

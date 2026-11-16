@@ -445,3 +445,175 @@ def test_game_expansions_not_found_and_validation(authed_client, fake_db):
         == 404
     )
     assert c.delete("/api/games/01GAME/expansions/NOPE", headers=ORIGIN).status_code == 404
+
+
+def test_game_rulebooks_upload_stream_and_delete(authed_client, fake_db):
+    import os
+    from pathlib import Path
+
+    fake_db["games"].seed(
+        {"pk": "01GAME", "name": "Catan", "tags": [], "createdAt": "2026-01-01T00:00:00Z"}
+    )
+    c = authed_client("admin")
+
+    pdf1 = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF"
+    resp1 = c.post(
+        "/api/games/01GAME/rulebooks?filename=Catan_Base_Rules.pdf",
+        content=pdf1,
+        headers={**ORIGIN, "Content-Type": "application/pdf"},
+    )
+    assert resp1.status_code == 201
+    game = resp1.json()
+    assert len(game["rulebooks"]) == 1
+    rb1 = game["rulebooks"][0]
+    assert rb1["name"] == "Catan_Base_Rules"
+    assert rb1["filename"] == "Catan_Base_Rules.pdf"
+    assert rb1["size"] == len(pdf1)
+    assert rb1["url"] == f"/api/games/01GAME/rulebooks/{rb1['id']}/file"
+    expected_path = Path(os.environ["RULEBOOKS_STORAGE_DIR"]) / "01GAME" / f"{rb1['id']}.pdf"
+    assert expected_path.is_file()
+
+    # Upload a second PDF rulebook on the same game with custom display name
+    pdf2 = b"%PDF-1.4\nAlmanac and FAQ content\n%%EOF"
+    resp2 = c.post(
+        "/api/games/01GAME/rulebooks?filename=almanac.pdf&name=Almanac+%26+FAQ",
+        content=pdf2,
+        headers={**ORIGIN, "Content-Type": "application/pdf"},
+    )
+    assert resp2.status_code == 201
+    game2 = resp2.json()
+    assert len(game2["rulebooks"]) == 2
+    rb2 = game2["rulebooks"][1]
+    assert rb2["name"] == "Almanac & FAQ"
+    assert rb2["filename"] == "almanac.pdf"
+
+    # Stream the first PDF file
+    file_resp = c.get(rb1["url"], headers=ORIGIN)
+    assert file_resp.status_code == 200
+    assert file_resp.headers["content-type"].startswith("application/pdf")
+    assert 'inline; filename="Catan_Base_Rules.pdf"' in file_resp.headers["content-disposition"]
+    assert file_resp.headers["x-frame-options"] == "SAMEORIGIN"
+    assert file_resp.content == pdf1
+
+    # Delete first rulebook
+    del_resp = c.delete(f"/api/games/01GAME/rulebooks/{rb1['id']}", headers=ORIGIN)
+    assert del_resp.status_code == 204
+
+    # Deleted rulebook returns 404 for both file GET and DELETE
+    assert c.get(rb1["url"], headers=ORIGIN).status_code == 404
+    assert c.delete(f"/api/games/01GAME/rulebooks/{rb1['id']}", headers=ORIGIN).status_code == 404
+
+    # Second rulebook remains intact
+    games_list = c.get("/api/games", headers=ORIGIN).json()
+    assert len(games_list[0]["rulebooks"]) == 1
+    assert games_list[0]["rulebooks"][0]["id"] == rb2["id"]
+
+    # Deleting the game removes its remaining rulebooks cleanly
+    assert c.delete("/api/games/01GAME", headers=ORIGIN).status_code == 204
+
+
+def test_game_rulebooks_validation_and_permissions(authed_client, fake_db, monkeypatch):
+    import routes.games as games_module
+    from tests.conftest import make_auth_cookie
+
+    fake_db["games"].seed(
+        {
+            "pk": "01GAME",
+            "name": "Catan",
+            "ownerId": "alice",
+            "libraryId": "personal:alice",
+            "tags": [],
+            "createdAt": "2026-01-01T00:00:00Z",
+        }
+    )
+    c = authed_client("admin")
+
+    # 404 for unknown game
+    assert (
+        c.post(
+            "/api/games/NOPE/rulebooks?filename=rules.pdf",
+            content=b"%PDF-1.4\n",
+            headers={**ORIGIN, "Content-Type": "application/pdf"},
+        ).status_code
+        == 404
+    )
+    assert c.get("/api/games/NOPE/rulebooks/RB1/file", headers=ORIGIN).status_code == 404
+    assert c.delete("/api/games/NOPE/rulebooks/RB1", headers=ORIGIN).status_code == 404
+
+    # Reject non-PDF content-type (415)
+    assert (
+        c.post(
+            "/api/games/01GAME/rulebooks?filename=rules.pdf",
+            content=b"%PDF-1.4\n",
+            headers={**ORIGIN, "Content-Type": "image/png"},
+        ).status_code
+        == 415
+    )
+
+    # Reject non-.pdf filename (422)
+    assert (
+        c.post(
+            "/api/games/01GAME/rulebooks?filename=rules.txt",
+            content=b"%PDF-1.4\n",
+            headers={**ORIGIN, "Content-Type": "application/pdf"},
+        ).status_code
+        == 422
+    )
+
+    # Reject empty body (422)
+    assert (
+        c.post(
+            "/api/games/01GAME/rulebooks?filename=rules.pdf",
+            content=b"",
+            headers={**ORIGIN, "Content-Type": "application/pdf"},
+        ).status_code
+        == 422
+    )
+
+    # Reject non-PDF magic bytes (422)
+    assert (
+        c.post(
+            "/api/games/01GAME/rulebooks?filename=rules.pdf",
+            content=b"NOT A PDF FILE",
+            headers={**ORIGIN, "Content-Type": "application/pdf"},
+        ).status_code
+        == 422
+    )
+
+    # Reject oversized PDF (413)
+    monkeypatch.setattr(games_module, "MAX_RULEBOOK_BYTES", 10)
+    assert (
+        c.post(
+            "/api/games/01GAME/rulebooks?filename=rules.pdf",
+            content=b"%PDF-1.4\n1234567890",
+            headers={**ORIGIN, "Content-Type": "application/pdf"},
+        ).status_code
+        == 413
+    )
+    monkeypatch.setattr(games_module, "MAX_RULEBOOK_BYTES", 50 * 1024 * 1024)
+
+    # Upload valid rulebook as admin
+    up = c.post(
+        "/api/games/01GAME/rulebooks?filename=rules.pdf",
+        content=b"%PDF-1.4\nvalid",
+        headers={**ORIGIN, "Content-Type": "application/pdf"},
+    )
+    assert up.status_code == 201
+    rb_id = up.json()["rulebooks"][0]["id"]
+
+    # Another normal user ('bob') cannot upload, stream, or delete rulebook on alice's personal game
+    c.cookies.set("token", make_auth_cookie("normal", sub="bob")["token"])
+    assert (
+        c.post(
+            "/api/games/01GAME/rulebooks?filename=bob.pdf",
+            content=b"%PDF-1.4\nbob",
+            headers={**ORIGIN, "Content-Type": "application/pdf"},
+        ).status_code
+        == 403
+    )
+    assert c.get(f"/api/games/01GAME/rulebooks/{rb_id}/file", headers=ORIGIN).status_code == 403
+    assert c.delete(f"/api/games/01GAME/rulebooks/{rb_id}", headers=ORIGIN).status_code == 403
+
+    # Owner ('alice') can stream and upload
+    c.cookies.set("token", make_auth_cookie("normal", sub="alice")["token"])
+    assert c.get(f"/api/games/01GAME/rulebooks/{rb_id}/file", headers=ORIGIN).status_code == 200

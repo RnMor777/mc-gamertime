@@ -268,3 +268,18 @@ def avatar_url(username: str, has_avatar: bool, updated_at: str | None = None) -
         if stamp:
             url = f"{url}?v={stamp}"
     return url
+
+
+MAX_RULEBOOK_BYTES = 50 * 1024 * 1024
+
+
+def make_rulebooks_client():
+    """Return a storage client for PDF rulebooks.
+
+    In local storage mode, stores files in a dedicated rulebooks directory
+    (configurable via RULEBOOKS_STORAGE_DIR, defaulting to /data/rulebooks),
+    so operators can mount a dedicated Docker volume for PDF rulebooks.
+    """
+    if is_local_storage():
+        return LocalFsClient(os.environ.get("RULEBOOKS_STORAGE_DIR") or "/data/rulebooks")
+    return make_s3_client()
