@@ -17,9 +17,13 @@
 
 | | |
 |---|---|
-| **Game catalog** | Search Board Game Geek, keep player counts, weights and cover art |
+| **Game catalog** | Search BoardGameGeek (including matching by expansion keywords), track player counts, complexity, BGG `boardgamecategory` values, cover art, and "New" badges for recent additions |
+| **Expansions & rulebooks** | Search/add expansions per game and upload multiple PDF rulebooks with an inline pop-up PDF viewer |
+| **Catalog stats & picker** | Dedicated Catalog Stats page (counts by category, player count, play time, complexity) and a Game Picker supporting `2`–`8+` players, last played, and searchable categories |
+| **Personal & family libraries** | Private personal library created per user on join, plus shared family libraries with per-library roles (`owner`, `editor`, `readonly`) |
+| **Authentication & OIDC SSO** | Local auth or OpenID Connect (OIDC) SSO via env vars, with an option (`DISABLE_LOCAL_AUTH`) to allow SSO-only sign-in |
 | **Leaderboard** | Elo rating per player, win rates, streaks, head-to-head records |
-| **Session log** | Who played, who won, scores, mood — plus per-game custom fields |
+| **Session log** | Any user can log sessions (scores, mood, photos, per-game custom fields); admins and session creators can edit |
 | **Achievements** | Milestones detected automatically as results come in |
 | **Player profiles** | Favourite game, nemesis, best month, Elo history |
 | **Blog** | Session recaps with rich text and images |
@@ -73,8 +77,8 @@ echo "ADMIN_PASSWORD=<your-password>" >> .env
 docker compose up -d
 ```
 
-`ADMIN_USERNAME`/`ADMIN_PASSWORD` are the **only required setting** — they bootstrap your
-first admin account on first boot. Everything else — `BGG_TOKEN` for game search, `SMTP_*` for
+`ADMIN_USERNAME`/`ADMIN_PASSWORD` are the **only required setting** when using local auth — they bootstrap your
+first admin account on first boot (or configure `OIDC_*` with `DISABLE_LOCAL_AUTH=true` for SSO-only). Everything else — `BGG_TOKEN` for game search, `OIDC_*` for SSO, `RULEBOOKS_STORAGE_DIR` (mounted at `./config/rulebooks:/data/rulebooks` in `docker-compose.yml`), `SMTP_*` for
 password-reset email, `APP_BASE_URL`, `CORS_ALLOWED_ORIGINS`, etc. — is optional with a
 working default; see [`.env.example`](./.env.example) or the [full config
 reference](https://mcgamertime-docs.drmaggi.com/self-hosting/configuration/).
@@ -117,11 +121,11 @@ The security considerations for the AWS hosted app are described here:
 
 ## Stack
 
-- **Frontend** — React 19, TypeScript, Vite, Tailwind CSS 4, React Router 7, TanStack Query 5,
-  Zod, Recharts
+- **Frontend** — React 19, TypeScript, Vite 8, Tailwind CSS 4, React Router 7, TanStack Query 5,
+  Zod 4, Recharts 3
 - **Backend** — Python, FastAPI; uvicorn when self-hosted, Lambda + Mangum on AWS
 - **Data** — embedded SQLite, or DynamoDB
-- **Storage** — local filesystem, or S3; uploaded media is served by the app behind auth,
+- **Storage** — local filesystem (including a dedicated volume for PDF rulebooks), or S3; uploaded media is served by the app behind auth,
   never straight from the bucket
 - **Infra** — Terraform, GitHub Actions, release-please
 

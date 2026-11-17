@@ -11,7 +11,7 @@ import contextlib
 import json
 import sqlite3
 import threading
-from collections.abc import Iterator
+from collections.abc import Generator
 from decimal import Decimal
 from typing import Any
 
@@ -100,7 +100,7 @@ class SqliteTable:
                 )
 
     @contextlib.contextmanager
-    def _connection(self) -> Iterator[sqlite3.Connection]:
+    def _connection(self) -> Generator[sqlite3.Connection]:
         with self._lock:
             if self._conn is None:
                 self._conn = _connect(self._db_path)
