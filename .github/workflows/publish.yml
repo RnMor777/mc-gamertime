@@ -70,7 +70,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
-          images: ghcr.io/strandgaard96/mc-gamertime
+          images: ghcr.io/RnMor777/mc-gamertime
           # `inputs.tag` is empty on a plain push to main and set on a release.
           tags: |
             type=raw,value=main,enable=${{ inputs.tag == '' }}
