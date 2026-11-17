@@ -1,12 +1,59 @@
 import { Sparkles, Star } from "lucide-react";
 import { useState } from "react";
 import type { Game } from "../lib/types";
+import { idFromPk } from "../lib/utils";
+import { getGameCategories } from "./CategorySelect";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { DualRangeSlider } from "./ui/dual-range-slider";
 
-export const NEW_GAME_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const NEW_GAME_WINDOW_MS = 7 * DAY_MS;
 export const MAX_NEW_GAMES = 5;
+
+export type LastPlayedFilter = "any" | "never" | "30d+" | "90d+" | "1y+" | "recent-30d";
+
+export const LAST_PLAYED_OPTIONS: LastPlayedFilter[] = [
+  "any",
+  "never",
+  "30d+",
+  "90d+",
+  "1y+",
+  "recent-30d",
+];
+
+export const LAST_PLAYED_LABELS: Record<LastPlayedFilter, string> = {
+  any: "Any",
+  never: "Never played",
+  "30d+": "30+ days ago",
+  "90d+": "90+ days ago",
+  "1y+": "1+ year ago",
+  "recent-30d": "Last 30 days",
+};
+
+export function matchesLastPlayedFilter(
+  game: Game,
+  filter: LastPlayedFilter | undefined,
+  lastPlayedDates: Record<string, string> = {},
+  nowMs: number = Date.now(),
+): boolean {
+  if (!filter || filter === "any") return true;
+  const dateStr = lastPlayedDates[idFromPk(game.pk)] ?? lastPlayedDates[game.pk];
+  if (filter === "never") return !dateStr;
+  if (filter === "recent-30d") {
+    if (!dateStr) return false;
+    const parsed = Date.parse(dateStr);
+    return !Number.isNaN(parsed) && nowMs - parsed <= 30 * DAY_MS;
+  }
+  if (!dateStr) return true;
+  const parsed = Date.parse(dateStr);
+  if (Number.isNaN(parsed)) return true;
+  const ageMs = nowMs - parsed;
+  if (filter === "30d+") return ageMs >= 30 * DAY_MS;
+  if (filter === "90d+") return ageMs >= 90 * DAY_MS;
+  if (filter === "1y+") return ageMs >= 365 * DAY_MS;
+  return true;
+}
 
 export function getNewGamePks(games: Game[], nowMs: number = Date.now()): Set<string> {
   const cutoff = nowMs - NEW_GAME_WINDOW_MS;
@@ -22,7 +69,8 @@ export interface FilterState {
   playerCount: [number, number];
   playTime: [number, number];
   weight: [number, number];
-  yearPublished: [number, number];
+  lastPlayed?: LastPlayedFilter;
+  categories?: string[];
   tags: string[];
   favorites: boolean;
   newlyAdded?: boolean;
@@ -32,7 +80,8 @@ export const DEFAULT_FILTERS: FilterState = {
   playerCount: [1, 10],
   playTime: [0, 300],
   weight: [0, 5],
-  yearPublished: [1900, 2026],
+  lastPlayed: "any",
+  categories: [],
   tags: [],
   favorites: false,
   newlyAdded: false,
@@ -46,14 +95,16 @@ interface Props {
 
 export function CatalogFilters({ games, filters, onChange }: Props) {
   const [open, setOpen] = useState(false);
-  const allTags = Array.from(new Set(games.flatMap((g) => g.tags))).sort();
+  const allCategories = Array.from(new Set(games.flatMap((g) => getGameCategories(g)))).sort();
+  const selectedCategories =
+    filters.categories && filters.categories.length > 0 ? filters.categories : filters.tags;
+  const currentLastPlayed = filters.lastPlayed ?? "any";
   const activeCount = [
     filters.playerCount[0] !== 1 || filters.playerCount[1] !== 10,
     filters.playTime[0] !== 0 || filters.playTime[1] !== 300,
     filters.weight[0] !== 0 || filters.weight[1] !== 5,
-    filters.yearPublished[0] !== DEFAULT_FILTERS.yearPublished[0] ||
-      filters.yearPublished[1] !== DEFAULT_FILTERS.yearPublished[1],
-    filters.tags.length > 0,
+    currentLastPlayed !== "any",
+    selectedCategories.length > 0,
     filters.favorites,
     Boolean(filters.newlyAdded),
   ].filter(Boolean).length;
@@ -123,7 +174,7 @@ export function CatalogFilters({ games, filters, onChange }: Props) {
           </div>
           <div>
             <label className="text-sm font-medium mb-1 block">
-              Weight: {filters.weight[0].toFixed(1)}–{filters.weight[1].toFixed(1)}
+              Complexity: {filters.weight[0].toFixed(1)}–{filters.weight[1].toFixed(1)}
             </label>
             <DualRangeSlider
               min={0}
@@ -134,36 +185,46 @@ export function CatalogFilters({ games, filters, onChange }: Props) {
             />
           </div>
           <div>
-            <label className="text-sm font-medium mb-1 block">
-              Year: {filters.yearPublished[0].toFixed(0)}–{filters.yearPublished[1].toFixed(0)}
-            </label>
-            <DualRangeSlider
-              min={DEFAULT_FILTERS.yearPublished[0]}
-              max={DEFAULT_FILTERS.yearPublished[1]}
-              value={filters.yearPublished}
-              onChange={(v) => onChange({ ...filters, yearPublished: v })}
-            />
+            <label className="text-sm font-medium mb-2 block">Last played</label>
+            <div className="flex flex-wrap gap-2">
+              {LAST_PLAYED_OPTIONS.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  aria-pressed={currentLastPlayed === opt}
+                  onClick={() => onChange({ ...filters, lastPlayed: opt })}
+                  className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
+                    currentLastPlayed === opt
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border hover:border-primary"
+                  }`}
+                >
+                  {LAST_PLAYED_LABELS[opt]}
+                </button>
+              ))}
+            </div>
           </div>
-          {allTags.length > 0 && (
+          {allCategories.length > 0 && (
             <div>
-              <label className="text-sm font-medium mb-2 block">Tags</label>
+              <label className="text-sm font-medium mb-2 block">Categories</label>
               <div className="flex flex-wrap gap-2">
-                {allTags.map((tag) => (
+                {allCategories.map((category) => (
                   <button
-                    key={tag}
+                    key={category}
+                    type="button"
                     onClick={() => {
-                      const next = filters.tags.includes(tag)
-                        ? filters.tags.filter((t) => t !== tag)
-                        : [...filters.tags, tag];
-                      onChange({ ...filters, tags: next });
+                      const next = selectedCategories.includes(category)
+                        ? selectedCategories.filter((c) => c !== category)
+                        : [...selectedCategories, category];
+                      onChange({ ...filters, categories: next, tags: next });
                     }}
                     className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
-                      filters.tags.includes(tag)
+                      selectedCategories.includes(category)
                         ? "bg-primary text-primary-foreground border-primary"
                         : "border-border hover:border-primary"
                     }`}
                   >
-                    {tag}
+                    {category}
                   </button>
                 ))}
               </div>
@@ -179,8 +240,11 @@ export function applyFilters(
   games: Game[],
   filters: FilterState,
   nowMs: number = Date.now(),
+  lastPlayedDates: Record<string, string> = {},
 ): Game[] {
   const newPks = filters.newlyAdded ? getNewGamePks(games, nowMs) : null;
+  const selectedCategories =
+    filters.categories && filters.categories.length > 0 ? filters.categories : filters.tags;
   return games.filter((g) => {
     if (filters.playerCount[0] !== 1 || filters.playerCount[1] !== 10) {
       if (g.minPlayers == null || g.maxPlayers == null) return false;
@@ -195,16 +259,12 @@ export function applyFilters(
       if (g.weight == null) return false;
       if (g.weight < filters.weight[0] || g.weight > filters.weight[1]) return false;
     }
-    if (
-      filters.yearPublished[0] !== DEFAULT_FILTERS.yearPublished[0] ||
-      filters.yearPublished[1] !== DEFAULT_FILTERS.yearPublished[1]
-    ) {
-      if (g.yearPublished == null) return false;
-      if (g.yearPublished < filters.yearPublished[0] || g.yearPublished > filters.yearPublished[1])
-        return false;
+    if (!matchesLastPlayedFilter(g, filters.lastPlayed, lastPlayedDates, nowMs)) {
+      return false;
     }
-    if (filters.tags.length > 0) {
-      if (!filters.tags.every((t) => g.tags.includes(t))) return false;
+    if (selectedCategories.length > 0) {
+      const gameCategories = getGameCategories(g);
+      if (!selectedCategories.every((c) => gameCategories.includes(c))) return false;
     }
     if (filters.favorites && !g.isFavorited) return false;
     if (newPks && !newPks.has(g.pk)) return false;

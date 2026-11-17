@@ -617,3 +617,24 @@ def test_game_rulebooks_validation_and_permissions(authed_client, fake_db, monke
     # Owner ('alice') can stream and upload
     c.cookies.set("token", make_auth_cookie("normal", sub="alice")["token"])
     assert c.get(f"/api/games/01GAME/rulebooks/{rb_id}/file", headers=ORIGIN).status_code == 200
+
+
+def test_game_categories_create_and_update(authed_client):
+    c = authed_client("admin")
+    resp = c.post(
+        "/api/games",
+        json={"name": "Catan", "categories": ["Economic", "Negotiation", "Economic"]},
+        headers=ORIGIN,
+    )
+    assert resp.status_code == 201
+    created = resp.json()
+    assert created["categories"] == ["Economic", "Negotiation"]
+    assert created["tags"] == ["Economic", "Negotiation"]
+
+    upd = c.put(
+        f"/api/games/{created['pk']}",
+        json={"categories": ["Strategy", "Family", "City Building"]},
+        headers=ORIGIN,
+    )
+    assert upd.status_code == 200
+    assert upd.json()["categories"] == ["Strategy", "Family", "City Building"]

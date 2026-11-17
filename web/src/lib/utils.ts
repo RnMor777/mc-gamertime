@@ -85,3 +85,22 @@ export function seasonOf(date: string): string {
 export function seasonParam(raw: string | null): string | undefined {
   return raw && /^\d{4}-Q[1-4]$/.test(raw) ? raw : undefined;
 }
+
+/**
+ * Match a game when all whitespace-separated search keywords appear in either
+ * the base game's name or one of its expansions' names.
+ */
+export function gameMatchesSearch(
+  game: { name: string; expansions?: { name: string }[] | null },
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const words = q.split(/\s+/);
+  const nameLower = game.name.toLowerCase();
+  if (words.every((w) => nameLower.includes(w))) return true;
+  return (game.expansions ?? []).some((exp) => {
+    const expLower = exp.name.toLowerCase();
+    return words.every((w) => expLower.includes(w));
+  });
+}

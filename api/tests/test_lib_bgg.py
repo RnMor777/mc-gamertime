@@ -90,3 +90,24 @@ def test_refresh_reverts_to_fallback_when_db_token_cleared():
     bgg.refresh_token_from_db()
 
     assert bgg._bgg_token == "env-fallback-token"
+
+
+def test_bgg_detail_extracts_boardgamecategory_links(monkeypatch):
+    xml_payload = (
+        "<items>"
+        '<item id="13">'
+        '<name type="primary" value="Catan"/>'
+        '<yearpublished value="1995"/>'
+        '<link type="boardgamecategory" id="1021" value="Economic"/>'
+        '<link type="boardgamecategory" id="1026" value="Negotiation"/>'
+        '<link type="boardgamemechanic" id="2072" value="Dice Rolling"/>'
+        "</item>"
+        "</items>"
+    )
+
+    monkeypatch.setattr(bgg.httpx, "get", lambda *a, **kw: _FakeResponse(xml_payload))
+    detail = bgg.bgg_detail(13)
+
+    assert detail["bggId"] == 13
+    assert detail["name"] == "Catan"
+    assert detail["categories"] == ["Economic", "Negotiation"]

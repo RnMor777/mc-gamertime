@@ -18,6 +18,7 @@ import { useAuth } from "../lib/AuthContext";
 import { addGameFavorite, removeGameFavorite } from "../lib/api";
 import type { Game } from "../lib/types";
 import { cn, formatDate, idFromPk, pluralize, pressable } from "../lib/utils";
+import { getGameCategories } from "./CategorySelect";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Tooltip } from "./ui/tooltip.tsx";
@@ -204,6 +205,26 @@ export const GameCard = memo(function GameCard({
             </a>
           )}
         </div>
+        {getGameCategories(game).length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {getGameCategories(game)
+              .slice(0, 3)
+              .map((cat) => (
+                <Badge
+                  key={cat}
+                  variant="secondary"
+                  className="px-1.5 py-0 text-[10px] font-normal"
+                >
+                  {cat}
+                </Badge>
+              ))}
+            {getGameCategories(game).length > 3 && (
+              <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-normal">
+                +{getGameCategories(game).length - 3}
+              </Badge>
+            )}
+          </div>
+        )}
         <Dialog open={showDialog} onClose={closeDialog} title="Delete Game">
           <div className="space-y-6">
             <div>

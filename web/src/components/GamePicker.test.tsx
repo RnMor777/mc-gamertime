@@ -88,10 +88,56 @@ describe("getNewGamePks, sortGames, and applyFilters", () => {
     ]);
     expect(sortGames(games, "added-asc").map((g) => g.name)).toEqual(["Wingspan", "Catan", "Azul"]);
   });
+
+  it("sorts games by last played date and filters by last played", () => {
+    const now = Date.parse("2026-11-15T12:00:00Z");
+    const games = [
+      makeGame("g1", "Catan", "2026-11-01T10:00:00Z"),
+      makeGame("g2", "Azul", "2026-11-01T10:00:00Z"),
+      makeGame("g3", "Wingspan", "2026-11-01T10:00:00Z"),
+    ];
+    const lastPlayedDates: Record<string, string> = {
+      g1: "2026-11-10",
+      g2: "2026-09-01",
+      // g3 never played
+    };
+
+    expect(sortGames(games, "lastPlayed", "desc", lastPlayedDates).map((g) => g.name)).toEqual([
+      "Catan",
+      "Azul",
+      "Wingspan",
+    ]);
+    expect(sortGames(games, "lastPlayed", "asc", lastPlayedDates).map((g) => g.name)).toEqual([
+      "Wingspan",
+      "Azul",
+      "Catan",
+    ]);
+
+    expect(
+      applyFilters(games, { ...DEFAULT_FILTERS, lastPlayed: "never" }, now, lastPlayedDates).map(
+        (g) => g.name,
+      ),
+    ).toEqual(["Wingspan"]);
+
+    expect(
+      applyFilters(games, { ...DEFAULT_FILTERS, lastPlayed: "30d+" }, now, lastPlayedDates).map(
+        (g) => g.name,
+      ),
+    ).toEqual(["Azul", "Wingspan"]);
+
+    expect(
+      applyFilters(
+        games,
+        { ...DEFAULT_FILTERS, lastPlayed: "recent-30d" },
+        now,
+        lastPlayedDates,
+      ).map((g) => g.name),
+    ).toEqual(["Catan"]);
+  });
 });
 
 describe("GamePicker component", () => {
-  it("displays the New tag on newly added games and sorts by added date", async () => {
+  it("displays the New tag on newly added games, sorts with direction button, and has Last Played filter without Year filter", async () => {
     const now = Date.now();
     vi.mocked(api.getGames).mockResolvedValue([
       makeGame("g-old", "Carcassonne", new Date(now - 14 * DAY_MS).toISOString()),
@@ -116,21 +162,39 @@ describe("GamePicker component", () => {
     const newBadges = screen.getAllByText("New");
     expect(newBadges).toHaveLength(1);
 
-    // Sort by Added: Oldest puts Carcassonne first
-    const sortSelect = screen.getByLabelText("Sort games");
-    fireEvent.change(sortSelect, { target: { value: "added-asc" } });
+    // Sort select has one option per item including Last Played and Complexity
+    const sortSelect = screen.getByLabelText("Sort games") as HTMLSelectElement;
+    const optionTexts = Array.from(sortSelect.options).map((o) => o.textContent);
+    expect(optionTexts).toEqual([
+      "Name",
+      "Added",
+      "Last Played",
+      "Complexity",
+      "Play Time",
+      "Year",
+    ]);
+
+    // Sort by Added (Asc default) puts Carcassonne first
+    fireEvent.change(sortSelect, { target: { value: "added" } });
     const linksAsc = screen
       .getAllByRole("link")
       .map((el) => el.textContent)
       .filter(Boolean);
     expect(linksAsc).toEqual(["Carcassonne", "Ark Nova"]);
 
-    // Sort by Added: Newest puts Ark Nova first
-    fireEvent.change(sortSelect, { target: { value: "added-desc" } });
+    // Clicking direction toggle button switches to Desc and puts Ark Nova first
+    const dirBtn = screen.getByLabelText(/Sort direction:/i);
+    fireEvent.click(dirBtn);
     const linksDesc = screen
       .getAllByRole("link")
       .map((el) => el.textContent)
       .filter(Boolean);
     expect(linksDesc).toEqual(["Ark Nova", "Carcassonne"]);
+
+    // Open Filters panel: verify Complexity and Last played are present and Year filter is removed
+    fireEvent.click(screen.getByRole("button", { name: /^Filters/i }));
+    expect(screen.getByText(/Complexity:/i)).toBeInTheDocument();
+    expect(screen.getByText("Last played")).toBeInTheDocument();
+    expect(screen.queryByText(/Year:/i)).not.toBeInTheDocument();
   });
 });

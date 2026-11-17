@@ -162,4 +162,13 @@ def bgg_detail(bgg_id: int) -> dict:
             with contextlib.suppress(ValueError):
                 detail["weight"] = float(val)
 
+    categories: list[str] = []
+    for link_el in item.findall("link"):
+        if link_el.get("type") == "boardgamecategory":
+            cat_val = (link_el.get("value") or "").strip()
+            if cat_val and cat_val not in categories:
+                categories.append(cat_val)
+    if categories:
+        detail["categories"] = categories
+
     return detail

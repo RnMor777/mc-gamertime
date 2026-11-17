@@ -49,8 +49,10 @@ def player_count_at_least(n: int) -> Predicate:
 
 def game_has_tag(tag: str) -> Predicate:
     def pred(ctx: AchievementContext, result: dict) -> bool:
-        tags = ctx.game(result).get("tags") or []
-        return tag.lower() in (t.lower() for t in tags)
+        game = ctx.game(result)
+        items = list(game.get("categories") or []) + list(game.get("tags") or [])
+        target = tag.lower()
+        return any(target == t.lower() or target in t.lower() for t in items)
 
     return pred
 

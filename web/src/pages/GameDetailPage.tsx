@@ -22,10 +22,12 @@ import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { AddExpansionDialog } from "../components/AddExpansionDialog";
 import { Avatar } from "../components/Avatar";
+import { getGameCategories } from "../components/CategorySelect";
 import { GameConfigDialog } from "../components/GameConfigDialog";
 import { LogResultDialog } from "../components/LogResultDialog";
 import { PageTransition } from "../components/PageTransition";
 import { PostCard } from "../components/PostCard";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Skeleton } from "../components/ui/skeleton";
@@ -248,6 +250,16 @@ export default function GameDetailPage() {
                 View on BGG
               </a>
             )}
+          </div>
+        )}
+
+        {getGameCategories(game).length > 0 && (
+          <div className="flex flex-wrap gap-1.5" aria-label="Game categories">
+            {getGameCategories(game).map((cat) => (
+              <Badge key={cat} variant="secondary" className="text-xs font-normal">
+                {cat}
+              </Badge>
+            ))}
           </div>
         )}
 

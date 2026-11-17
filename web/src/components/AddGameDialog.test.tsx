@@ -38,13 +38,14 @@ beforeEach(() => {
     name: "CATAN",
     yearPublished: 1995,
     description: "Trade, build, and settle the island of Catan.",
+    categories: ["Economic", "Negotiation"],
   });
   vi.mocked(api.addGame).mockResolvedValue({} as any);
 });
 
 describe("AddGameDialog", () => {
   // BGG search matches alternate names; the user expects the name they clicked, not the primary.
-  it("saves the alternate name and BGG description", async () => {
+  it("saves the alternate name, BGG description, and BGG boardgamecategory values", async () => {
     vi.mocked(api.searchBgg).mockResolvedValue([
       { bggId: 13, name: "Die Siedler von Catan", yearPublished: 1995 },
     ]);
@@ -57,6 +58,7 @@ describe("AddGameDialog", () => {
           bggId: 13,
           name: "Die Siedler von Catan",
           description: "Trade, build, and settle the island of Catan.",
+          categories: ["Economic", "Negotiation"],
         }),
       ),
     );

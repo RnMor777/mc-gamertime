@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   Dices,
   FileText,
   Layers,
@@ -31,6 +32,7 @@ const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const HomePage = lazy(() => import("./pages/HomePage"));
 const Catalog = lazy(() => import("./pages/Catalog"));
+const CatalogStatsPage = lazy(() => import("./pages/CatalogStatsPage"));
 const GameDetailPage = lazy(() => import("./pages/GameDetailPage"));
 const Picker = lazy(() => import("./pages/Picker"));
 const LogResult = lazy(() => import("./pages/LogResult"));
@@ -191,6 +193,7 @@ function AppShell() {
   ];
 
   const MENU_ITEMS = [
+    { to: "/catalog/stats", label: "Catalog Stats", icon: <BarChart3 size={16} /> },
     { to: "/recommended", label: "Picks", icon: <Star size={16} /> },
     ...(user.role === "admin"
       ? [
@@ -283,6 +286,7 @@ function AppShell() {
               <Routes location={location} key={location.pathname}>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/catalog" element={<Catalog />} />
+                <Route path="/catalog/stats" element={<CatalogStatsPage />} />
                 <Route path="/picker" element={<Picker />} />
                 <Route path="/log" element={<LogResult />} />
                 <Route path="/leaderboard" element={<Leaderboard />} />

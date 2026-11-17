@@ -163,6 +163,17 @@ def _normalize_expansion(exp: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_categories(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    seen: list[str] = []
+    for v in values:
+        cleaned = v.strip()
+        if cleaned and cleaned not in seen:
+            seen.append(cleaned)
+    return seen
+
+
 class AddGameBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
@@ -175,6 +186,7 @@ class AddGameBody(BaseModel):
     playTime: int | None = None
     weight: float | None = None
     yearPublished: int | None = None
+    categories: list[str] = []
     tags: list[str] = []
     playerVariables: list[PlayerVariableDefInput] = []
     expansions: list[ExpansionInput] = []
@@ -192,6 +204,7 @@ class UpdateGameBody(BaseModel):
     playTime: int | None = None
     weight: float | None = None
     yearPublished: int | None = None
+    categories: list[str] | None = None
     tags: list[str] | None = None
     playerVariables: list[PlayerVariableDefInput] | None = None
     expansions: list[ExpansionInput] | None = None
@@ -314,6 +327,9 @@ def list_games_route(
     for game in games:
         favorites = game.pop("favorites", set())
         game["isFavorited"] = user.sub in favorites
+        cats = _normalize_categories(game.get("categories") or game.get("tags") or [])
+        game["categories"] = cats
+        game["tags"] = cats
         game.setdefault("expansions", [])
         game.setdefault("rulebooks", [])
     return games
@@ -379,6 +395,9 @@ def create_game(body: AddGameBody, user: Annotated[AuthUser, Depends(require_wri
         target_lib = resolve_library_id(None, user.sub, user.displayName)
 
     data = body.model_dump(exclude={"libraryId"})
+    cats = _normalize_categories(data.get("categories") or data.get("tags") or [])
+    data["categories"] = cats
+    data["tags"] = cats
     data["playerVariables"] = _assign_variable_ids(data["playerVariables"])
     data["expansions"] = [_normalize_expansion(e) for e in data["expansions"]]
     game = {
@@ -403,6 +422,14 @@ def update_game_route(
     _require_game_write_access(existing, user)
 
     updates = body.model_dump(exclude_unset=True)
+    if "categories" in updates:
+        cats = _normalize_categories(updates["categories"])
+        updates["categories"] = cats
+        updates["tags"] = cats
+    elif "tags" in updates:
+        cats = _normalize_categories(updates["tags"])
+        updates["tags"] = cats
+        updates["categories"] = cats
     if "playerVariables" in updates and updates["playerVariables"] is None:
         updates["playerVariables"] = []
     if body.playerVariables is not None:
@@ -415,6 +442,9 @@ def update_game_route(
         )
 
     updated = {**existing, **updates}
+    cats = _normalize_categories(updated.get("categories") or updated.get("tags") or [])
+    updated["categories"] = cats
+    updated["tags"] = cats
     put_game(updated)
     return {k: v for k, v in updated.items() if k != "favorites"}
 

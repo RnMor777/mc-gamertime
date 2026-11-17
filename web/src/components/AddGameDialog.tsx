@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useGameImageUpload } from "../hooks/useGameImageUpload";
 import { addGame, getBggDetail, searchBgg } from "../lib/api";
 import type { BggGameDetail, BggSearchResult } from "../lib/types";
+import { CategorySelect } from "./CategorySelect";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { Input } from "./ui/input";
@@ -21,7 +22,7 @@ export function AddGameDialog({ open, onClose, libraryId }: Props) {
   const [results, setResults] = useState<BggSearchResult[]>([]);
   const [selected, setSelected] = useState<BggGameDetail | null>(null);
   const [saving, setSaving] = useState(false);
-  const [tags, setTags] = useState("");
+  const [categories, setCategories] = useState<string[]>([]);
   const [mode, setMode] = useState<"search" | "manual">("search");
   const [manualName, setManualName] = useState("");
   const [description, setDescription] = useState("");
@@ -57,6 +58,7 @@ export function AddGameDialog({ open, onClose, libraryId }: Props) {
       // BGG search matches alternate (e.g. localized) names; keep the one the user clicked
       // instead of the detail's primary name.
       setSelected({ ...detail, name: r.name || detail.name });
+      setCategories(detail.categories ?? []);
     } finally {
       setSearching(false);
     }
@@ -77,10 +79,8 @@ export function AddGameDialog({ open, onClose, libraryId }: Props) {
         playTime: selected.playTime,
         weight: selected.weight,
         yearPublished: selected.yearPublished,
-        tags: tags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
+        categories,
+        tags: categories,
       });
       qc.invalidateQueries({ queryKey: ["games"] });
       qc.invalidateQueries({ queryKey: ["libraries"] });
@@ -104,10 +104,8 @@ export function AddGameDialog({ open, onClose, libraryId }: Props) {
         playTime: playTime ? Number(playTime) : undefined,
         weight: weight ? Number(weight) : undefined,
         yearPublished: yearPublished ? Number(yearPublished) : undefined,
-        tags: tags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
+        categories,
+        tags: categories,
       });
       qc.invalidateQueries({ queryKey: ["games"] });
       qc.invalidateQueries({ queryKey: ["libraries"] });
@@ -121,7 +119,7 @@ export function AddGameDialog({ open, onClose, libraryId }: Props) {
     setQuery("");
     setResults([]);
     setSelected(null);
-    setTags("");
+    setCategories([]);
     setMode("search");
     setManualName("");
     setDescription("");
@@ -167,8 +165,8 @@ export function AddGameDialog({ open, onClose, libraryId }: Props) {
           onWeightChange={setWeight}
           yearPublished={yearPublished}
           onYearPublishedChange={setYearPublished}
-          tags={tags}
-          onTagsChange={setTags}
+          categories={categories}
+          onCategoriesChange={setCategories}
           imageUrl={manualImageUrl}
           uploading={uploading}
           onFileChange={handleFileChange}
@@ -224,18 +222,10 @@ export function AddGameDialog({ open, onClose, libraryId }: Props) {
             {selected.name} ({selected.yearPublished})
           </h3>
           <p className="text-sm text-muted-foreground">
-            {selected.minPlayers}–{selected.maxPlayers} players · {selected.playTime} min · Weight{" "}
-            {selected.weight?.toFixed(1)}
+            {selected.minPlayers}–{selected.maxPlayers} players · {selected.playTime} min ·
+            Complexity {selected.weight?.toFixed(1)}
           </p>
-          <div>
-            <label className="text-sm font-medium">Tags (comma-separated)</label>
-            <Input
-              className="mt-1"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="strategy, family, …"
-            />
-          </div>
+          <CategorySelect value={categories} onChange={setCategories} />
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setSelected(null)}>
               ← Back
@@ -265,8 +255,8 @@ interface ManualGameFormProps {
   onWeightChange: (v: string) => void;
   yearPublished: string;
   onYearPublishedChange: (v: string) => void;
-  tags: string;
-  onTagsChange: (v: string) => void;
+  categories: string[];
+  onCategoriesChange: (v: string[]) => void;
   imageUrl: string | undefined;
   uploading: boolean;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -289,8 +279,8 @@ function ManualGameForm({
   onWeightChange,
   yearPublished,
   onYearPublishedChange,
-  tags,
-  onTagsChange,
+  categories,
+  onCategoriesChange,
   imageUrl,
   uploading,
   onFileChange,
@@ -358,7 +348,7 @@ function ManualGameForm({
         <Input
           type="number"
           step="0.1"
-          placeholder="Weight"
+          placeholder="Complexity"
           value={weight}
           onChange={(e) => onWeightChange(e.target.value)}
         />
@@ -369,15 +359,7 @@ function ManualGameForm({
         value={yearPublished}
         onChange={(e) => onYearPublishedChange(e.target.value)}
       />
-      <div>
-        <label className="text-sm font-medium">Tags (comma-separated)</label>
-        <Input
-          className="mt-1"
-          value={tags}
-          onChange={(e) => onTagsChange(e.target.value)}
-          placeholder="strategy, family, …"
-        />
-      </div>
+      <CategorySelect value={categories} onChange={onCategoriesChange} />
       <Button
         className="w-full"
         isLoading={saving}

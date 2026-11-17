@@ -1,10 +1,10 @@
-import { Dices } from "lucide-react";
+import { ArrowDown, ArrowUp, Dices } from "lucide-react";
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { useDebounce } from "../hooks/useDebounce";
 import { useGameStats } from "../hooks/useGameStats.ts";
 import { useGames } from "../hooks/useGames";
 import type { Game } from "../lib/types";
-import { idFromPk } from "../lib/utils";
+import { gameMatchesSearch, idFromPk } from "../lib/utils";
 import {
   applyFilters,
   CatalogFilters,
@@ -17,11 +17,19 @@ import { GameCardSkeleton } from "./GameCardSkeleton.tsx";
 import { GameListRow } from "./GameListRow";
 import { Input } from "./ui/input";
 
+export type SortField = "name" | "added" | "lastPlayed" | "complexity" | "time" | "year";
+export type SortDirection = "asc" | "desc";
+
 export type SortKey =
+  | SortField
   | "name-asc"
   | "name-desc"
   | "added-desc"
   | "added-asc"
+  | "lastPlayed-desc"
+  | "lastPlayed-asc"
+  | "complexity-asc"
+  | "complexity-desc"
   | "weight-asc"
   | "weight-desc"
   | "time-asc"
@@ -34,29 +42,61 @@ interface Props {
   onDelete?: (id: string) => void;
 }
 
-export function sortGames(games: Game[], key: SortKey): Game[] {
+function resolveSortFieldAndDir(
+  key: SortKey,
+  direction?: SortDirection,
+): { field: SortField; dir: SortDirection } {
+  if (key.endsWith("-asc")) {
+    const raw = key.slice(0, -4);
+    return {
+      field: (raw === "weight" ? "complexity" : raw) as SortField,
+      dir: "asc",
+    };
+  }
+  if (key.endsWith("-desc")) {
+    const raw = key.slice(0, -5);
+    return {
+      field: (raw === "weight" ? "complexity" : raw) as SortField,
+      dir: "desc",
+    };
+  }
+  return { field: key as SortField, dir: direction ?? "asc" };
+}
+
+export function sortGames(
+  games: Game[],
+  key: SortKey,
+  direction?: SortDirection,
+  lastPlayedDates: Record<string, string> = {},
+): Game[] {
+  const { field, dir } = resolveSortFieldAndDir(key, direction);
+  const mult = dir === "asc" ? 1 : -1;
+
   return [...games].sort((a, b) => {
-    switch (key) {
-      case "name-asc":
-        return a.name.localeCompare(b.name);
-      case "name-desc":
-        return b.name.localeCompare(a.name);
-      case "added-desc":
-        return (b.createdAt ?? "").localeCompare(a.createdAt ?? "") || a.name.localeCompare(b.name);
-      case "added-asc":
-        return (a.createdAt ?? "").localeCompare(b.createdAt ?? "") || a.name.localeCompare(b.name);
-      case "weight-asc":
-        return (a.weight ?? 0) - (b.weight ?? 0);
-      case "weight-desc":
-        return (b.weight ?? 0) - (a.weight ?? 0);
-      case "time-asc":
-        return (a.playTime ?? 0) - (b.playTime ?? 0);
-      case "time-desc":
-        return (b.playTime ?? 0) - (a.playTime ?? 0);
-      case "year-desc":
-        return (b.yearPublished ?? 0) - (a.yearPublished ?? 0);
-      case "year-asc":
-        return (a.yearPublished ?? 0) - (b.yearPublished ?? 0);
+    switch (field) {
+      case "name":
+        return mult * a.name.localeCompare(b.name);
+      case "added":
+        return (
+          mult * (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
+          a.name.localeCompare(b.name)
+        );
+      case "lastPlayed": {
+        const aDate = lastPlayedDates[idFromPk(a.pk)] ?? lastPlayedDates[a.pk] ?? "";
+        const bDate = lastPlayedDates[idFromPk(b.pk)] ?? lastPlayedDates[b.pk] ?? "";
+        if (!aDate && !bDate) return a.name.localeCompare(b.name);
+        if (!aDate) return dir === "desc" ? 1 : -1;
+        if (!bDate) return dir === "desc" ? -1 : 1;
+        return mult * aDate.localeCompare(bDate) || a.name.localeCompare(b.name);
+      }
+      case "complexity":
+        return mult * ((a.weight ?? 0) - (b.weight ?? 0)) || a.name.localeCompare(b.name);
+      case "time":
+        return mult * ((a.playTime ?? 0) - (b.playTime ?? 0)) || a.name.localeCompare(b.name);
+      case "year":
+        return (
+          mult * ((a.yearPublished ?? 0) - (b.yearPublished ?? 0)) || a.name.localeCompare(b.name)
+        );
       default:
         return 0;
     }
@@ -69,7 +109,8 @@ export function GamePicker({ onSelect, onDelete }: Props) {
   const [view, setView] = useState<"grid" | "list">(
     () => (localStorage.getItem("catalog-view") as "grid" | "list") ?? "grid",
   );
-  const [sort, setSort] = useState<SortKey>("name-asc");
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortDir, setSortDir] = useState<SortDirection>("asc");
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
   const deferredSearch = useDeferredValue(debouncedSearch);
@@ -79,11 +120,11 @@ export function GamePicker({ onSelect, onDelete }: Props) {
   const newGamePks = useMemo(() => getNewGamePks(games), [games]);
 
   const visible = useMemo(() => {
-    let g = applyFilters(games, filters);
+    let g = applyFilters(games, filters, undefined, lastPlayedDates);
     if (deferredSearch.trim())
-      g = g.filter((game) => game.name.toLowerCase().includes(deferredSearch.toLowerCase()));
-    return sortGames(g, sort);
-  }, [games, filters, deferredSearch, sort]);
+      g = g.filter((game) => gameMatchesSearch(game, deferredSearch));
+    return sortGames(g, sortField, sortDir, lastPlayedDates);
+  }, [games, filters, deferredSearch, sortField, sortDir, lastPlayedDates]);
 
   const handleDelete = useCallback(
     (id: string) => {
@@ -114,21 +155,27 @@ export function GamePicker({ onSelect, onDelete }: Props) {
         <div className="flex items-center gap-2">
           <select
             aria-label="Sort games"
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
+            value={sortField}
+            onChange={(e) => setSortField(e.target.value as SortField)}
             className="h-8 px-2 text-sm rounded-md border border-input bg-background flex-1 sm:flex-none"
           >
-            <option value="name-asc">Name A–Z</option>
-            <option value="name-desc">Name Z–A</option>
-            <option value="added-desc">Added: Newest</option>
-            <option value="added-asc">Added: Oldest</option>
-            <option value="weight-asc">Weight: Light → Heavy</option>
-            <option value="weight-desc">Weight: Heavy → Light</option>
-            <option value="time-asc">Play Time: Short → Long</option>
-            <option value="time-desc">Play Time: Long → Short</option>
-            <option value="year-desc">Year: Newest</option>
-            <option value="year-asc">Year: Oldest</option>
+            <option value="name">Name</option>
+            <option value="added">Added</option>
+            <option value="lastPlayed">Last Played</option>
+            <option value="complexity">Complexity</option>
+            <option value="time">Play Time</option>
+            <option value="year">Year</option>
           </select>
+          <button
+            type="button"
+            aria-label={`Sort direction: ${sortDir === "asc" ? "Ascending" : "Descending"}`}
+            title={sortDir === "asc" ? "Ascending" : "Descending"}
+            onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+            className="h-8 px-2.5 text-sm rounded-md border border-input bg-background hover:bg-muted flex items-center gap-1 text-foreground transition-colors"
+          >
+            {sortDir === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+            <span className="text-xs">{sortDir === "asc" ? "Asc" : "Desc"}</span>
+          </button>
           <div className="flex rounded-md border border-input overflow-hidden ml-auto">
             <button
               onClick={() => {

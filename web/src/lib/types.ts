@@ -41,6 +41,7 @@ export interface Game {
   playTime?: number;
   weight?: number;
   yearPublished?: number;
+  categories?: string[];
   tags: string[];
   createdAt: string;
   isFavorited?: boolean;
@@ -121,6 +122,7 @@ export interface BggGameDetail {
   maxPlayers?: number;
   playTime?: number;
   weight?: number;
+  categories?: string[];
 }
 export interface LeaderboardEntry {
   playerId: string;

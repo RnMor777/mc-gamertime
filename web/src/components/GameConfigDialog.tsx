@@ -4,6 +4,7 @@ import { useGameImageUpload } from "../hooks/useGameImageUpload";
 import { useUpdateGame } from "../hooks/useGames";
 import type { Game } from "../lib/types";
 import { idFromPk } from "../lib/utils";
+import { CategorySelect, getGameCategories } from "./CategorySelect";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { Input } from "./ui/input";
@@ -31,7 +32,7 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
   const [playTime, setPlayTime] = useState("");
   const [weight, setWeight] = useState("");
   const [yearPublished, setYearPublished] = useState("");
-  const [tags, setTags] = useState("");
+  const [categories, setCategories] = useState<string[]>([]);
   const { imageUrl, uploading, handleFileChange, setImageUrl } = useGameImageUpload(game.imageUrl);
 
   useEffect(() => {
@@ -50,7 +51,7 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
     setPlayTime(game.playTime?.toString() ?? "");
     setWeight(game.weight?.toString() ?? "");
     setYearPublished(game.yearPublished?.toString() ?? "");
-    setTags(game.tags.join(", "));
+    setCategories(getGameCategories(game));
     setImageUrl(game.imageUrl);
     setError("");
   }, [open, game, setImageUrl]);
@@ -93,10 +94,8 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
         playTime: playTime ? Number(playTime) : null,
         weight: weight ? Number(weight) : null,
         yearPublished: yearPublished ? Number(yearPublished) : null,
-        tags: tags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
+        categories,
+        tags: categories,
         playerVariables,
         trackTurnOrder,
       },
@@ -165,7 +164,7 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
           <Input
             type="number"
             step="0.1"
-            placeholder="Weight"
+            placeholder="Complexity"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
           />
@@ -176,10 +175,7 @@ export function GameConfigDialog({ open, onClose, game }: Props) {
           value={yearPublished}
           onChange={(e) => setYearPublished(e.target.value)}
         />
-        <div>
-          <label className="text-sm font-medium">Tags (comma-separated)</label>
-          <Input className="mt-1" value={tags} onChange={(e) => setTags(e.target.value)} />
-        </div>
+        <CategorySelect value={categories} onChange={setCategories} />
         <div>
           <label className="text-sm font-medium">Player variables</label>
           <p className="text-xs text-muted-foreground mt-0.5">

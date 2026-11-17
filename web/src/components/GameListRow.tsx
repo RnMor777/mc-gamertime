@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
 import type { Game } from "../lib/types";
 import { cn, idFromPk, pressable } from "../lib/utils";
+import { getGameCategories } from "./CategorySelect";
 import { LogResultDialog } from "./LogResultDialog";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -106,6 +107,26 @@ export function GameListRow({ game, onSelect, onDelete, isNew }: Props) {
             </span>
           )}
         </div>
+        {getGameCategories(game).length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {getGameCategories(game)
+              .slice(0, 3)
+              .map((cat) => (
+                <Badge
+                  key={cat}
+                  variant="secondary"
+                  className="px-1.5 py-0 text-[10px] font-normal"
+                >
+                  {cat}
+                </Badge>
+              ))}
+            {getGameCategories(game).length > 3 && (
+              <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-normal">
+                +{getGameCategories(game).length - 3}
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
       {!onSelect && user && (
         <Button
