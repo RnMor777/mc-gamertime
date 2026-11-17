@@ -12,14 +12,14 @@ RUN npm run build
 # imports). Exported with hashes so stage 3 installs exactly the locked files.
 # uv needs an interpreter to validate the lock, so run it on the same Python
 # base as the runtime stage rather than in the (Python-less) uv image.
-FROM python:3.12-slim@sha256:dddfd7e07f9d15aeeca61529320492139d21cac7f0070c00609243e51e4e0016 AS deps
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS deps
 COPY --from=ghcr.io/astral-sh/uv:0.13.4@sha256:9f130421e930bfbdc563c00740466603f8723158e90297d07957c2294640262b /uv /usr/local/bin/uv
 WORKDIR /api
 COPY api/pyproject.toml api/uv.lock ./
 RUN ["uv", "export", "--locked", "--no-default-groups", "--group", "selfhost", "--format", "requirements-txt", "--quiet", "--output-file", "/requirements.txt"]
 
 # --- stage 3: runtime ---
-FROM python:3.12-slim@sha256:dddfd7e07f9d15aeeca61529320492139d21cac7f0070c00609243e51e4e0016 AS app
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS app
 WORKDIR /app
 
 # sqlite3 CLI is required by the disaster-recovery runbook
