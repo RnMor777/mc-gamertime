@@ -14,7 +14,7 @@ import {
   useUpdateRecommended,
 } from "../hooks/useRecommended";
 import type { Recommendation } from "../lib/types";
-import { idFromPk } from "../lib/utils";
+import { gameMatchesSearch, idFromPk } from "../lib/utils";
 
 const EMPTY_FORM = { gamePk: "", blurb: "", tags: "", bestFor: "", order: 1 };
 
@@ -227,7 +227,7 @@ export default function AdminRecommendedPage() {
               (() => {
                 const selectedGame = games.find((g) => g.pk === form.gamePk);
                 const filtered = gameSearch.trim()
-                  ? games.filter((g) => g.name.toLowerCase().includes(gameSearch.toLowerCase()))
+                  ? games.filter((g) => gameMatchesSearch(g, gameSearch))
                   : games;
                 return (
                   <div className="space-y-1">

@@ -8,7 +8,7 @@ import { getPlayers } from "../lib/api";
 import { MAX_PHOTOS, preparePhoto, uploadSessionPhoto } from "../lib/photos";
 import { ResultFormSchema } from "../lib/schemas";
 import type { Result } from "../lib/types";
-import { idFromPk, pluralize } from "../lib/utils";
+import { gameMatchesSearch, idFromPk, pluralize } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { Input } from "./ui/input";
@@ -245,8 +245,7 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
   }, [games, editResult]);
 
   const filteredGames = useMemo(
-    () =>
-      availableGames.filter((g) => g.name.toLowerCase().includes(state.gameSearch.toLowerCase())),
+    () => availableGames.filter((g) => gameMatchesSearch(g, state.gameSearch)),
     [availableGames, state.gameSearch],
   );
 
@@ -385,9 +384,7 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
             onChange={(e) => {
               const val = e.target.value;
               const clearGame = !games.some(
-                (g) =>
-                  g.name.toLowerCase().includes(val.toLowerCase()) &&
-                  idFromPk(g.pk) === state.gameId,
+                (g) => gameMatchesSearch(g, val) && idFromPk(g.pk) === state.gameId,
               );
               dispatch({ type: "SET_GAME_SEARCH", value: val, clearGame: clearGame });
             }}

@@ -121,8 +121,7 @@ export function GamePicker({ onSelect, onDelete }: Props) {
 
   const visible = useMemo(() => {
     let g = applyFilters(games, filters, undefined, lastPlayedDates);
-    if (deferredSearch.trim())
-      g = g.filter((game) => gameMatchesSearch(game, deferredSearch));
+    if (deferredSearch.trim()) g = g.filter((game) => gameMatchesSearch(game, deferredSearch));
     return sortGames(g, sortField, sortDir, lastPlayedDates);
   }, [games, filters, deferredSearch, sortField, sortDir, lastPlayedDates]);
 

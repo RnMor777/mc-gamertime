@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../lib/api";
 import { AuthProvider } from "../lib/AuthContext";
 import type { Game } from "../lib/types";
+import { gameMatchesSearch } from "../lib/utils";
 import { applyFilters, DEFAULT_FILTERS, getNewGamePks } from "./CatalogFilters";
 import { GamePicker, sortGames } from "./GamePicker";
 
@@ -196,5 +197,59 @@ describe("GamePicker component", () => {
     expect(screen.getByText(/Complexity:/i)).toBeInTheDocument();
     expect(screen.getByText("Last played")).toBeInTheDocument();
     expect(screen.queryByText(/Year:/i)).not.toBeInTheDocument();
+  });
+
+  it("matches base games when searching by expansion keywords", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(api.getGames).mockResolvedValue([
+        {
+          ...makeGame("g-catan", "Catan", "2026-11-10T10:00:00Z"),
+          expansions: [{ id: "exp-1", name: "Catan: Seafarers" }],
+        },
+        makeGame("g-azul", "Azul", "2026-11-10T10:00:00Z"),
+      ]);
+
+      expect(
+        gameMatchesSearch(
+          { name: "Catan", expansions: [{ name: "Catan: Seafarers" }] },
+          "seafarers",
+        ),
+      ).toBe(true);
+      expect(
+        gameMatchesSearch(
+          { name: "Catan", expansions: [{ name: "Catan: Seafarers" }] },
+          "catan seafarers",
+        ),
+      ).toBe(true);
+      expect(gameMatchesSearch({ name: "Azul", expansions: [] }, "seafarers")).toBe(false);
+
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={qc}>
+          <MemoryRouter>
+            <AuthProvider>
+              <GamePicker />
+            </AuthProvider>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+
+      await screen.findByText("Catan");
+      await screen.findByText("Azul");
+
+      fireEvent.change(screen.getByLabelText("Search games"), {
+        target: { value: "seafarers" },
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(350);
+      });
+
+      expect(screen.getByText("Catan")).toBeInTheDocument();
+      expect(screen.queryByText("Azul")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
