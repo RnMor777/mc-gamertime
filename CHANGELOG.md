@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/RnMor777/mc-gamertime/compare/v0.5.0...v0.6.0) (2026-11-26)
+
+
+### Features
+
+* added tie and guest users to the game session logging ([02afc76](https://github.com/RnMor777/mc-gamertime/commit/02afc7680014e9b6e8a4448692b15c937c2ce562))
+
 ## [0.5.0](https://github.com/RnMor777/mc-gamertime/compare/v0.4.0...v0.5.0) (2026-11-17)
 
 
