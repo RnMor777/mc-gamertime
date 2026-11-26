@@ -1,6 +1,6 @@
 [project]
 name = "mc-gamertime-api"
-version = "0.5.0"
+version = "0.6.0"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi==0.163.1",
