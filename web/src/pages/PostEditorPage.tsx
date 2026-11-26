@@ -9,7 +9,7 @@ import { Skeleton } from "../components/ui/skeleton";
 import { type PostDraft, useDraft } from "../hooks/useDraft";
 import { useCreatePost, usePosts, useUpdatePost } from "../hooks/usePosts";
 import { useResults } from "../hooks/useResults";
-import { formatDate, idFromPk } from "../lib/utils";
+import { formatDate, formatWinners, idFromPk } from "../lib/utils";
 
 export default function PostEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -181,7 +181,7 @@ export default function PostEditorPage() {
               <option value="">Select a session…</option>
               {sortedResults.map((r) => (
                 <option key={r.pk} value={r.pk}>
-                  {r.gameName} · {formatDate(r.date)} · {r.winnerName} won
+                  {r.gameName} · {formatDate(r.date)} · {formatWinners(r)} won
                 </option>
               ))}
             </select>

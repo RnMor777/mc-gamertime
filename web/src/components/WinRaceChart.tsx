@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { isResultWinner } from "../lib/utils";
 import type { Result } from "../lib/types";
 
 const CHART_COLORS = [
@@ -31,9 +32,10 @@ export function WinRaceChart({ results }: Props) {
 
     for (const r of sorted) {
       for (const p of r.players) {
+        if (p.isGuest) continue;
         if (!counts[p.playerId]) counts[p.playerId] = { wins: 0, played: 0, name: p.playerName };
         counts[p.playerId].played++;
-        if (r.winnerId === p.playerId) counts[p.playerId].wins++;
+        if (isResultWinner(r, p.playerId)) counts[p.playerId].wins++;
       }
       const point: Record<string, number | string> = {
         date: r.date,

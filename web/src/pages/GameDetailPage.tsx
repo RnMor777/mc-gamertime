@@ -42,7 +42,7 @@ import { useLibraries } from "../hooks/useLibraries";
 import { usePosts } from "../hooks/usePosts";
 import { useResults } from "../hooks/useResults";
 import type { GameExpansion, GameRulebook, Result } from "../lib/types";
-import { formatDate, idFromPk } from "../lib/utils";
+import { formatDate, getWinnerIds, idFromPk, isResultWinner } from "../lib/utils";
 
 function formatFileSize(bytes?: number): string {
   if (bytes == null || Number.isNaN(bytes)) return "";
@@ -76,11 +76,14 @@ export default function GameDetailPage() {
   const playerStats: Record<string, { name: string; wins: number; played: number }> = {};
   for (const r of gameResults) {
     for (const p of r.players) {
+      if (p.isGuest) continue;
       if (!playerStats[p.playerId])
         playerStats[p.playerId] = { name: p.playerName, wins: 0, played: 0 };
       playerStats[p.playerId].played++;
     }
-    if (r.winnerId && playerStats[r.winnerId]) playerStats[r.winnerId].wins++;
+    for (const wid of getWinnerIds(r)) {
+      if (playerStats[wid]) playerStats[wid].wins++;
+    }
   }
 
   const topPlayers = Object.entries(playerStats)
@@ -643,20 +646,35 @@ export default function GameDetailPage() {
                 >
                   <span className="text-muted-foreground text-xs">{formatDate(r.date)}</span>
                   <span>
-                    {r.players.map((p, i) => (
-                      <span key={p.playerId}>
-                        {i > 0 && ", "}
-                        <Link
-                          to={`/players/${p.playerId}`}
-                          className={`hover:text-primary transition-colors ${p.playerId === r.winnerId ? "font-semibold text-foreground" : "text-muted-foreground"}`}
-                        >
-                          {p.playerName}
-                        </Link>
-                        {p.score != null && (
-                          <span className="text-muted-foreground text-xs ml-0.5">({p.score})</span>
-                        )}
-                      </span>
-                    ))}
+                    {r.players.map((p, i) => {
+                      const isWinner = isResultWinner(r, p.playerId);
+                      const cls = isWinner
+                        ? "font-semibold text-foreground"
+                        : "text-muted-foreground";
+                      return (
+                        <span key={p.playerId}>
+                          {i > 0 && ", "}
+                          {p.isGuest ? (
+                            <span className={cls}>
+                              {p.playerName}{" "}
+                              <span className="text-xs font-normal opacity-70">(guest)</span>
+                            </span>
+                          ) : (
+                            <Link
+                              to={`/players/${p.playerId}`}
+                              className={`hover:text-primary transition-colors ${cls}`}
+                            >
+                              {p.playerName}
+                            </Link>
+                          )}
+                          {p.score != null && (
+                            <span className="text-muted-foreground text-xs ml-0.5">
+                              ({p.score})
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })}
                   </span>
                 </div>
               ))}

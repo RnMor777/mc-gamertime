@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from lib.results_helpers import get_winner_ids
+
 if TYPE_CHECKING:
     from .engine import AchievementContext
 
@@ -11,7 +13,7 @@ Evaluate = Callable[["AchievementContext", list[dict]], "str | None"]
 
 
 def is_win(ctx: AchievementContext, result: dict) -> bool:
-    return result.get("winnerId") == ctx.player_id
+    return ctx.player_id in get_winner_ids(result)
 
 
 def beat_the_leader(ctx: AchievementContext, result: dict) -> bool:
@@ -19,7 +21,7 @@ def beat_the_leader(ctx: AchievementContext, result: dict) -> bool:
     if not is_win(ctx, result):
         return False
     leader = ctx.leader_before.get(result.get("pk", ""))
-    if leader is None or leader == ctx.player_id:
+    if leader is None or leader == ctx.player_id or leader in get_winner_ids(result):
         return False
     return any(p.get("playerId") == leader for p in result["players"])
 

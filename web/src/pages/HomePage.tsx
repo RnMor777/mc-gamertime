@@ -12,7 +12,7 @@ import { useResults } from "../hooks/useResults";
 import { useDisplayName, usePublicSettings } from "../hooks/useSettings";
 import { useStats } from "../hooks/useStats";
 import { useAuth } from "../lib/AuthContext";
-import { formatDate, pluralize } from "../lib/utils";
+import { formatDate, formatWinners, isResultWinner, pluralize } from "../lib/utils";
 
 function AnimatedNumber({ value }: { value: number }) {
   const count = useCountUp(value);
@@ -46,7 +46,7 @@ export default function HomePage() {
     const week = results.filter((r) => r.date >= cutoffStr);
     return {
       count: week.length,
-      myWins: week.filter((r) => r.winnerId === user?.sub).length,
+      myWins: week.filter((r) => isResultWinner(r, user?.sub)).length,
     };
   }, [results, user, cutoffStr]);
 
@@ -164,7 +164,7 @@ export default function HomePage() {
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0 ml-2">
                       <Trophy size={11} className="text-primary" />
-                      <span className="truncate max-w-[80px]">{r.winnerName}</span>
+                      <span className="truncate max-w-[120px]">{formatWinners(r)}</span>
                     </div>
                   </div>
                 ))}

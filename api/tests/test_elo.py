@@ -103,3 +103,34 @@ def test_leaders_before_tie_is_none():
 
 def test_leaders_before_skips_results_without_pk():
     assert leaders_before([_result("p1", ["p1", "p2"])]) == {}
+
+
+def test_tied_winners_split_elo_and_beat_losers():
+    r = {
+        "gameId": "game-1",
+        "gameName": "Catan",
+        "date": "2026-01-01",
+        "players": [{"playerId": pid, "playerName": pid.title()} for pid in ["p1", "p2", "p3"]],
+        "winnerIds": ["p1", "p2"],
+        "winnerId": "p1",
+        "createdAt": "2026-01-01T00:00:00Z",
+    }
+    ratings = compute_elo([r])
+    # p1 & p2 tie (0 delta between them) and each beat p3 (+8 each, -16 for p3)
+    assert ratings == {"p1": 1008, "p2": 1008, "p3": 984}
+
+
+def test_guest_players_excluded_from_elo():
+    r = {
+        "gameId": "game-1",
+        "gameName": "Catan",
+        "date": "2026-01-01",
+        "players": [
+            {"playerId": "p1", "playerName": "P1"},
+            {"playerId": "guest:g1", "playerName": "Guest", "isGuest": True},
+        ],
+        "winnerIds": ["guest:g1"],
+        "winnerId": "guest:g1",
+        "createdAt": "2026-01-01T00:00:00Z",
+    }
+    assert compute_elo([r]) == {}

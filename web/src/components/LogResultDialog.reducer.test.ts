@@ -37,4 +37,19 @@ describe("formReducer", () => {
     expect(next.variables.bob).toEqual({ color: "blue" });
     expect(next.seats.bob).toBe(2);
   });
+
+  it("toggles multiple winners for ties and removes guest data cleanly", () => {
+    let state = {
+      ...buildInitialState({}),
+      selected: ["alice"],
+      guests: [{ id: "guest:bob-1", name: "Bob" }],
+    };
+    state = formReducer(state, { type: "TOGGLE_WINNER", playerId: "alice" });
+    state = formReducer(state, { type: "TOGGLE_WINNER", playerId: "guest:bob-1" });
+    expect(state.winnerIds).toEqual(["alice", "guest:bob-1"]);
+
+    state = formReducer(state, { type: "REMOVE_GUEST", id: "guest:bob-1" });
+    expect(state.guests).toEqual([]);
+    expect(state.winnerIds).toEqual(["alice"]);
+  });
 });

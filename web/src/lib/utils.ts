@@ -104,3 +104,23 @@ export function gameMatchesSearch(
     return words.every((w) => expLower.includes(w));
   });
 }
+
+export function getWinnerIds(result: { winnerId: string; winnerIds?: string[] }): string[] {
+  if (result.winnerIds && result.winnerIds.length > 0) return result.winnerIds;
+  return result.winnerId ? [result.winnerId] : [];
+}
+
+export function isResultWinner(
+  result: { winnerId: string; winnerIds?: string[] },
+  playerId?: string | null,
+): boolean {
+  if (!playerId) return false;
+  return getWinnerIds(result).includes(playerId);
+}
+
+export function formatWinners(result: { winnerName: string; winnerNames?: string[] }): string {
+  if (result.winnerNames && result.winnerNames.length > 0) {
+    return result.winnerNames.join(" & ");
+  }
+  return result.winnerName;
+}

@@ -933,3 +933,61 @@ def test_normal_user_can_create_update_and_delete_own_result_only_and_loads_game
     # Alice can delete her own session
     delete_resp = alice.delete(f"/api/results/{result_pk}", headers=ORIGIN)
     assert delete_resp.status_code == 204
+
+
+def test_create_result_with_tie_and_guest_player(authed_client, fake_db):
+    _seed_user(fake_db, "alice", "Alice")
+    _seed_user(fake_db, "bob", "Bob")
+    fake_db["games"].seed({"pk": "01GAME", "name": "Catan", "createdAt": "2026-01-01T00:00:00Z"})
+    c = authed_client("admin")
+
+    resp = c.post(
+        "/api/results",
+        json={
+            "gameId": "01GAME",
+            "gameName": "Catan",
+            "date": "2026-01-15",
+            "players": [
+                {"playerId": "alice", "playerName": "Alice", "score": 10},
+                {"playerId": "bob", "playerName": "Bob", "score": 8},
+                {
+                    "playerId": "guest:charlie-1",
+                    "playerName": "Charlie",
+                    "score": 10,
+                    "isGuest": True,
+                },
+            ],
+            "winnerIds": ["alice", "guest:charlie-1"],
+        },
+        headers=ORIGIN,
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["winnerIds"] == ["alice", "guest:charlie-1"]
+    assert data["winnerNames"] == ["Alice", "Charlie"]
+    assert data["winnerId"] == "alice"
+    assert data["winnerName"] == "Alice & Charlie"
+    # Guest does not receive notifications
+    notifs = fake_db["notifications"].scan()["Items"]
+    assert all(n["playerId"] != "guest:charlie-1" for n in notifs)
+
+
+def test_create_result_guest_without_guest_prefix_returns_422(authed_client, fake_db):
+    _seed_user(fake_db, "alice", "Alice")
+    fake_db["games"].seed({"pk": "01GAME", "name": "Catan", "createdAt": "2026-01-01T00:00:00Z"})
+    c = authed_client("admin")
+
+    resp = c.post(
+        "/api/results",
+        json={
+            "gameId": "01GAME",
+            "gameName": "Catan",
+            "date": "2026-01-15",
+            "players": [
+                {"playerId": "alice", "playerName": "Alice", "isGuest": True},
+            ],
+            "winnerIds": ["alice"],
+        },
+        headers=ORIGIN,
+    )
+    assert resp.status_code == 422

@@ -6,7 +6,7 @@ import { Skeleton } from "../components/ui/skeleton";
 import { useCountUp } from "../hooks/useCountUp";
 import { useResults } from "../hooks/useResults";
 import { useStats } from "../hooks/useStats";
-import { formatDate, pluralize } from "../lib/utils";
+import { formatDate, isResultWinner, pluralize } from "../lib/utils";
 
 function RecordCard({
   icon,
@@ -53,10 +53,11 @@ export default function RecordsPage() {
     const streakCurrent: Record<string, { wins: number; losses: number }> = {};
     for (const r of sorted) {
       for (const p of r.players) {
+        if (p.isGuest) continue;
         if (!streakBest[p.playerId])
           streakBest[p.playerId] = { wins: 0, losses: 0, name: p.playerName };
         if (!streakCurrent[p.playerId]) streakCurrent[p.playerId] = { wins: 0, losses: 0 };
-        if (r.winnerId === p.playerId) {
+        if (isResultWinner(r, p.playerId)) {
           streakCurrent[p.playerId].wins++;
           streakCurrent[p.playerId].losses = 0;
           if (streakCurrent[p.playerId].wins > streakBest[p.playerId].wins)

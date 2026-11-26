@@ -258,10 +258,12 @@ def delete_user_route(
         if admin_count <= 1:
             raise HTTPException(status_code=409, detail="Cannot delete the last admin")
 
+    from lib.results_helpers import get_winner_ids
+
     result_refs = sum(
         1
         for r in list_results()
-        if r.get("winnerId") == username
+        if username in get_winner_ids(r)
         or any(p.get("playerId") == username for p in r.get("players", []))
     )
     if result_refs:

@@ -13,6 +13,7 @@ from lib.db.notifications import put_notification
 from lib.db.results import delete_result, get_result, list_results, put_result
 from lib.db.users import get_user
 from lib.elo import leaders_before
+from lib.results_helpers import get_winner_ids
 from routes.photos import delete_session_photos
 
 router = APIRouter()
@@ -24,6 +25,7 @@ class ResultPlayer(BaseModel):
     score: float | None = None
     seat: int | None = None
     variables: dict[str, str] | None = None
+    isGuest: bool = False
 
     @field_validator("playerId", "playerName")
     @classmethod
@@ -105,17 +107,29 @@ class AddResultBody(BaseModel):
     gameName: str
     date: str
     players: list[ResultPlayer]
-    winnerId: str
-    winnerName: str
+    winnerId: str | None = None
+    winnerName: str | None = None
+    winnerIds: list[str] | None = None
+    winnerNames: list[str] | None = None
     mood: int | None = None
     notes: str | None = None
 
     @field_validator("gameId", "gameName", "winnerId", "winnerName")
     @classmethod
-    def non_empty(cls, v: str) -> str:
-        if not v or not v.strip():
+    def non_empty(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
             raise ValueError("must not be empty")
-        return v.strip()
+        return v.strip() if v is not None else v
+
+    @field_validator("winnerIds", "winnerNames")
+    @classmethod
+    def non_empty_list_items(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        cleaned = [item.strip() for item in v if item and item.strip()]
+        if not cleaned:
+            raise ValueError("must not be empty")
+        return cleaned
 
     @field_validator("mood")
     @classmethod
@@ -151,6 +165,8 @@ class UpdateResultBody(BaseModel):
     players: list[ResultPlayer] | None = None
     winnerId: str | None = None
     winnerName: str | None = None
+    winnerIds: list[str] | None = None
+    winnerNames: list[str] | None = None
     mood: int | None = None
     notes: str | None = None
 
@@ -160,6 +176,16 @@ class UpdateResultBody(BaseModel):
         if v is not None and not v.strip():
             raise ValueError("must not be empty")
         return v.strip() if v is not None else v
+
+    @field_validator("winnerIds", "winnerNames")
+    @classmethod
+    def non_empty_list_items(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        cleaned = [item.strip() for item in v if item and item.strip()]
+        if not cleaned:
+            raise ValueError("must not be empty")
+        return cleaned
 
     @field_validator("date")
     @classmethod
@@ -200,7 +226,7 @@ def detect_milestone(winner_id: str, winner_name: str, all_results: list) -> str
 
     streak = 0
     for r in reversed(player_results):
-        if r.get("winnerId") == winner_id:
+        if winner_id in get_winner_ids(r):
             streak += 1
         else:
             break
@@ -208,14 +234,14 @@ def detect_milestone(winner_id: str, winner_name: str, all_results: list) -> str
     prev_results = player_results[:-streak] if streak > 0 else player_results
     best_prev, current = 0, 0
     for r in prev_results:
-        if r.get("winnerId") == winner_id:
+        if winner_id in get_winner_ids(r):
             current += 1
             if current > best_prev:
                 best_prev = current
         else:
             current = 0
 
-    total_wins = sum(1 for r in player_results if r.get("winnerId") == winner_id)
+    total_wins = sum(1 for r in player_results if winner_id in get_winner_ids(r))
 
     if total_wins == 1:
         return f"🎉 {winner_name} got their first win!"
@@ -242,6 +268,8 @@ def _detect_new_achievements(
     after_leaders = leaders_before(after_results)
     new_achievements = []
     for player in players:
+        if player.isGuest:
+            continue
         before_ids = {
             a["id"]
             for a in compute_achievements(
@@ -294,21 +322,58 @@ def list_results_route(_: Annotated[AuthUser, Depends(require_auth)]):
     return enriched
 
 
+def _normalize_winners(
+    players: list[dict],
+    winner_ids: list[str] | None,
+    winner_id: str | None,
+) -> tuple[list[str], list[str]]:
+    """Resolve and validate winnerIds/winnerNames against the submitted players."""
+    raw_ids = winner_ids if winner_ids else ([winner_id] if winner_id else [])
+    deduped_ids = list(dict.fromkeys(raw_ids))
+    if not deduped_ids:
+        raise HTTPException(status_code=422, detail="At least one winner must be selected")
+
+    player_names_by_id = {p["playerId"]: p["playerName"] for p in players}
+    for wid in deduped_ids:
+        if wid not in player_names_by_id:
+            raise HTTPException(
+                status_code=422, detail="winnerId must be one of the submitted players"
+            )
+    names = [player_names_by_id[wid] for wid in deduped_ids]
+    return deduped_ids, names
+
+
+def _validate_players(players: list[dict]) -> None:
+    """Validate that registered players exist in users and guest players use a guest: ID."""
+    for player in players:
+        if player.get("isGuest"):
+            if not player["playerId"].startswith("guest:"):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Guest player '{player['playerName']}' must have a guest: id",
+                )
+        else:
+            player.pop("isGuest", None)
+            if not get_user(player["playerId"]):
+                raise HTTPException(status_code=422, detail=f"Unknown player: {player['playerId']}")
+
+
 @router.post("", status_code=201)
 def create_result(body: AddResultBody, user: Annotated[AuthUser, Depends(require_write)]):
-    player_ids = {p.playerId for p in body.players}
-    if body.winnerId not in player_ids:
-        raise HTTPException(status_code=422, detail="winnerId must be one of the submitted players")
-
     game = get_game(body.gameId)
     if not game:
         raise HTTPException(status_code=422, detail=f"Unknown game: {body.gameId}")
 
-    for player in body.players:
-        if not get_user(player.playerId):
-            raise HTTPException(status_code=422, detail=f"Unknown player: {player.playerId}")
-
     body_dump = body.model_dump()
+    _validate_players(body_dump["players"])
+    winner_ids, winner_names = _normalize_winners(
+        body_dump["players"], body.winnerIds, body.winnerId
+    )
+    body_dump["winnerIds"] = winner_ids
+    body_dump["winnerNames"] = winner_names
+    body_dump["winnerId"] = winner_ids[0]
+    body_dump["winnerName"] = " & ".join(winner_names)
+
     _validate_player_config(game, body_dump["players"])
     for key in OPTIONAL_RESULT_FIELDS:
         if body_dump.get(key) is None:
@@ -329,7 +394,17 @@ def create_result(body: AddResultBody, user: Annotated[AuthUser, Depends(require
     # it locally so milestone/achievement math sees the new result exactly once.
     before_results = [r for r in list_results() if r.get("pk") != result["pk"]]
     all_results = [*before_results, result]
-    milestone = detect_milestone(body.winnerId, body.winnerName, all_results)
+    guest_ids = {p.playerId for p in body.players if p.isGuest}
+    names_by_id = dict(zip(winner_ids, winner_names, strict=True))
+    milestone = next(
+        (
+            m
+            for wid in winner_ids
+            if wid not in guest_ids
+            and (m := detect_milestone(wid, names_by_id[wid], all_results)) is not None
+        ),
+        None,
+    )
     new_achievements = _detect_new_achievements(body.players, before_results, all_results, result)
     return {**result, "milestone": milestone, "newAchievements": new_achievements}
 
@@ -345,7 +420,8 @@ def update_result(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     updated: dict[str, Any] = {**existing}
-    for key, value in body.model_dump(exclude_unset=True).items():
+    dumped = body.model_dump(exclude_unset=True)
+    for key, value in dumped.items():
         if value is None:
             if key not in OPTIONAL_RESULT_FIELDS:
                 raise HTTPException(status_code=422, detail=f"{key} cannot be null")
@@ -353,9 +429,20 @@ def update_result(
         else:
             updated[key] = value
 
-    player_ids = {p["playerId"] for p in updated["players"]}
-    if updated["winnerId"] not in player_ids:
-        raise HTTPException(status_code=422, detail="winnerId must be one of the submitted players")
+    if body.players is not None:
+        _validate_players(updated["players"])
+
+    winner_ids_arg = (
+        dumped.get("winnerIds")
+        if "winnerIds" in dumped
+        else ([dumped["winnerId"]] if "winnerId" in dumped else updated.get("winnerIds"))
+    )
+    winner_id_arg = dumped.get("winnerId", updated.get("winnerId"))
+    winner_ids, winner_names = _normalize_winners(updated["players"], winner_ids_arg, winner_id_arg)
+    updated["winnerIds"] = winner_ids
+    updated["winnerNames"] = winner_names
+    updated["winnerId"] = winner_ids[0]
+    updated["winnerName"] = " & ".join(winner_names)
 
     game: dict | None = None
     if body.gameId is not None:
@@ -367,11 +454,6 @@ def update_result(
             updated["gameImageUrl"] = game["imageUrl"]
         else:
             updated.pop("gameImageUrl", None)
-
-    if body.players is not None:
-        for player in updated["players"]:
-            if not get_user(player["playerId"]):
-                raise HTTPException(status_code=422, detail=f"Unknown player: {player['playerId']}")
 
     if body.players is not None or body.gameId is not None:
         if game is None:

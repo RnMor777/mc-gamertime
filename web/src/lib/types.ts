@@ -61,6 +61,7 @@ interface ResultPlayer {
   score?: number;
   seat?: number | null;
   variables?: Record<string, string> | null;
+  isGuest?: boolean;
 }
 export interface Result {
   pk: string;
@@ -71,6 +72,8 @@ export interface Result {
   players: ResultPlayer[];
   winnerId: string;
   winnerName: string;
+  winnerIds?: string[];
+  winnerNames?: string[];
   createdAt: string;
   createdBy?: string;
   milestone?: string | null;

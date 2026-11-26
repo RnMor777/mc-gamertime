@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ImagePlus, X } from "lucide-react";
+import { Check, ImagePlus, Trophy, X } from "lucide-react";
 import { useId, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useGames } from "../hooks/useGames";
@@ -8,7 +8,7 @@ import { getPlayers } from "../lib/api";
 import { MAX_PHOTOS, preparePhoto, uploadSessionPhoto } from "../lib/photos";
 import { ResultFormSchema } from "../lib/schemas";
 import type { Result } from "../lib/types";
-import { gameMatchesSearch, idFromPk, pluralize } from "../lib/utils";
+import { gameMatchesSearch, getWinnerIds, idFromPk, pluralize } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { Input } from "./ui/input";
@@ -36,7 +36,8 @@ export interface FormState {
   gameSearch: string;
   date: string;
   selected: string[];
-  winnerId: string;
+  guests: { id: string; name: string }[];
+  winnerIds: string[];
   scores: Record<string, string>;
   mood: number | null;
   notes: string;
@@ -49,7 +50,9 @@ export type Action =
   | { type: "SET_GAME_SEARCH"; value: string; clearGame: boolean }
   | { type: "SET_DATE"; date: string }
   | { type: "TOGGLE_PLAYER"; playerId: string }
-  | { type: "SET_WINNER"; playerId: string }
+  | { type: "ADD_GUEST"; id: string; name: string }
+  | { type: "REMOVE_GUEST"; id: string }
+  | { type: "TOGGLE_WINNER"; playerId: string }
   | { type: "SET_SCORE"; playerId: string; value: string }
   | { type: "SET_MOOD"; mood: number | null }
   | { type: "SET_NOTES"; notes: string }
@@ -67,8 +70,11 @@ export function buildInitialState(init: {
       gameId: r.gameId,
       gameSearch: "",
       date: r.date,
-      selected: r.players.map((p) => p.playerId),
-      winnerId: r.winnerId,
+      selected: r.players.filter((p) => !p.isGuest).map((p) => p.playerId),
+      guests: r.players
+        .filter((p) => p.isGuest)
+        .map((p) => ({ id: p.playerId, name: p.playerName })),
+      winnerIds: getWinnerIds(r),
       scores: Object.fromEntries(
         r.players.filter((p) => p.score != null).map((p) => [p.playerId, String(p.score)]),
       ),
@@ -83,13 +89,31 @@ export function buildInitialState(init: {
     gameSearch: "",
     date: new Date().toISOString().slice(0, 10),
     selected: [],
-    winnerId: "",
+    guests: [],
+    winnerIds: [],
     scores: {},
     mood: null,
     notes: "",
     variables: {},
     seats: {},
   };
+}
+
+function removePlayerData(
+  state: FormState,
+  playerId: string,
+): Pick<FormState, "winnerIds" | "scores" | "variables" | "seats"> {
+  const winnerIds = state.winnerIds.filter((id) => id !== playerId);
+  let scores = state.scores;
+  if (playerId in scores) {
+    scores = { ...scores };
+    delete scores[playerId];
+  }
+  const variables = { ...state.variables };
+  delete variables[playerId];
+  const seats = { ...state.seats };
+  delete seats[playerId];
+  return { winnerIds, scores, variables, seats };
 }
 
 export function formReducer(state: FormState, action: Action): FormState {
@@ -108,25 +132,30 @@ export function formReducer(state: FormState, action: Action): FormState {
       const selected = inList
         ? state.selected.filter((id) => id !== action.playerId)
         : [...state.selected, action.playerId];
-      const winnerId = inList && state.winnerId === action.playerId ? "" : state.winnerId;
-      let scores = state.scores;
-      if (inList && action.playerId in scores) {
-        scores = { ...scores };
-        delete scores[action.playerId];
-      }
-      let variables = state.variables;
-      let seats = state.seats;
-      if (inList) {
-        variables = { ...variables };
-        delete variables[action.playerId];
-        seats = { ...seats };
-        delete seats[action.playerId];
-      }
-      return { ...state, selected, winnerId, scores, variables, seats };
+      if (!inList) return { ...state, selected };
+      return { ...state, selected, ...removePlayerData(state, action.playerId) };
     }
 
-    case "SET_WINNER":
-      return { ...state, winnerId: action.playerId };
+    case "ADD_GUEST":
+      return {
+        ...state,
+        guests: [...state.guests, { id: action.id, name: action.name }],
+      };
+
+    case "REMOVE_GUEST":
+      return {
+        ...state,
+        guests: state.guests.filter((g) => g.id !== action.id),
+        ...removePlayerData(state, action.id),
+      };
+
+    case "TOGGLE_WINNER": {
+      const exists = state.winnerIds.includes(action.playerId);
+      const winnerIds = exists
+        ? state.winnerIds.filter((id) => id !== action.playerId)
+        : [...state.winnerIds, action.playerId];
+      return { ...state, winnerIds };
+    }
 
     case "SET_SCORE":
       return { ...state, scores: { ...state.scores, [action.playerId]: action.value } };
@@ -178,6 +207,7 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
     buildInitialState,
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [guestName, setGuestName] = useState("");
   // Photo blobs are not serialisable form state: kept out of the reducer.
   const [photos, setPhotos] = useState<{ blob: Blob; url: string }[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -194,6 +224,8 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
   useLayoutEffect(() => {
     if (open) {
       dispatch({ type: "RESET", init: { defaultGameId, editResult } });
+      setGuestName("");
+      setErrors({});
       setPhotos((prev) => {
         prev.forEach((p) => URL.revokeObjectURL(p.url));
         return [];
@@ -253,12 +285,37 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
   const playerVariables = selectedGame?.playerVariables ?? [];
   const trackTurnOrder = selectedGame?.trackTurnOrder ?? false;
 
+  const allPlayers = useMemo(() => {
+    const reg = state.selected
+      .map((id) => {
+        const u = users.find((u) => u.pk === id);
+        return u ? { id: u.pk, name: u.displayName, isGuest: false } : null;
+      })
+      .filter((p): p is { id: string; name: string; isGuest: boolean } => p !== null);
+    const gst = state.guests.map((g) => ({ id: g.id, name: g.name, isGuest: true }));
+    return [...reg, ...gst];
+  }, [state.selected, state.guests, users]);
+
+  function handleAddGuest() {
+    const trimmed = guestName.trim();
+    if (!trimmed) return;
+    const slug =
+      trimmed
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "guest";
+    const suffix = Math.random().toString(36).slice(2, 6);
+    dispatch({ type: "ADD_GUEST", id: `guest:${slug}-${suffix}`, name: trimmed });
+    setGuestName("");
+  }
+
   const handleSubmit = async () => {
+    const allPlayerIds = allPlayers.map((p) => p.id);
     const validation = ResultFormSchema.safeParse({
       gameId: state.gameId,
       date: state.date,
-      players: state.selected,
-      winnerId: state.winnerId,
+      players: allPlayerIds,
+      winnerIds: state.winnerIds,
     });
 
     if (!validation.success) {
@@ -272,8 +329,8 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
     }
 
     if (playerVariables.length > 0) {
-      const missing = state.selected.some((username) =>
-        playerVariables.some((v) => !state.variables[username]?.[v.id]),
+      const missing = allPlayerIds.some((pid) =>
+        playerVariables.some((v) => !state.variables[pid]?.[v.id]),
       );
       if (missing) {
         setErrors({ variables: "Select a value for every player variable" });
@@ -282,8 +339,8 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
     }
 
     if (trackTurnOrder) {
-      const n = state.selected.length;
-      const seats = state.selected.map((username) => state.seats[username]);
+      const n = allPlayerIds.length;
+      const seats = allPlayerIds.map((pid) => state.seats[pid]);
       const valid =
         seats.every((s) => s != null) &&
         new Set(seats).size === n &&
@@ -296,37 +353,42 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
     setErrors({});
 
     const game = availableGames.find((g) => idFromPk(g.pk) === state.gameId);
-    const winner = users.find((u) => u.pk === state.winnerId);
+    const winners = state.winnerIds
+      .map((wid) => allPlayers.find((p) => p.id === wid))
+      .filter((p): p is { id: string; name: string; isGuest: boolean } => p !== undefined);
 
-    if (!game || !winner) {
+    if (!game || winners.length === 0) {
       console.error("Game or winner not found in data arrays");
       return;
     }
 
+    const winnerNames = winners.map((w) => w.name);
     const notes = state.notes.trim();
     const payload = {
       gameId: state.gameId,
       gameName: game.name,
       date: state.date,
-      players: state.selected.map((username) => {
-        const u = users.find((u) => u.pk === username)!;
-        const score = parseFloat(state.scores[username] ?? "");
+      players: allPlayers.map((p) => {
+        const score = parseFloat(state.scores[p.id] ?? "");
         return {
-          playerId: username,
-          playerName: u.displayName,
+          playerId: p.id,
+          playerName: p.name,
+          ...(p.isGuest ? { isGuest: true } : {}),
           ...(Number.isNaN(score) ? {} : { score }),
           ...(playerVariables.length > 0
             ? {
                 variables: Object.fromEntries(
-                  playerVariables.map((v) => [v.id, state.variables[username]?.[v.id] ?? ""]),
+                  playerVariables.map((v) => [v.id, state.variables[p.id]?.[v.id] ?? ""]),
                 ),
               }
             : {}),
-          ...(trackTurnOrder ? { seat: state.seats[username] } : {}),
+          ...(trackTurnOrder ? { seat: state.seats[p.id] } : {}),
         };
       }),
-      winnerId: state.winnerId,
-      winnerName: winner.displayName,
+      winnerIds: winners.map((w) => w.id),
+      winnerNames,
+      winnerId: winners[0].id,
+      winnerName: winnerNames.join(" & "),
       ...(state.mood != null ? { mood: state.mood } : {}),
       ...(notes ? { notes } : {}),
     };
@@ -449,68 +511,113 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
                 </button>
               );
             })}
+            {state.guests.map((g) => (
+              <span
+                key={g.id}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm border border-dashed border-primary/60 bg-primary/10 text-foreground"
+              >
+                {g.name}
+                <span className="text-[10px] text-muted-foreground">(guest)</span>
+                <button
+                  type="button"
+                  aria-label={`Remove guest ${g.name}`}
+                  onClick={() => dispatch({ type: "REMOVE_GUEST", id: g.id })}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+          </div>
+
+          <div className="mt-2 flex gap-2">
+            <Input
+              placeholder="Add guest player…"
+              value={guestName}
+              onChange={(e) => setGuestName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddGuest();
+                }
+              }}
+              className="h-8 text-sm"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleAddGuest}
+              disabled={!guestName.trim()}
+            >
+              Add guest
+            </Button>
           </div>
 
           {errors.players && <p className="text-destructive text-xs mt-1">{errors.players}</p>}
         </div>
-        {state.selected.length > 0 && (
+        {allPlayers.length > 0 && (
           <div>
             <label className="text-sm font-medium">Scores (optional)</label>
             <div className="mt-1 space-y-2">
-              {state.selected.map((username) => {
-                const u = users.find((u) => u.pk === username)!;
-                return (
-                  <div key={username} className="flex items-center justify-between gap-2">
-                    <span className="text-sm">{u.displayName}</span>
-                    <Input
-                      type="number"
-                      step="any"
-                      placeholder="Score"
-                      className="w-24"
-                      value={state.scores[username] ?? ""}
-                      onChange={(e) =>
-                        dispatch({ type: "SET_SCORE", playerId: username, value: e.target.value })
-                      }
-                    />
-                  </div>
-                );
-              })}
+              {allPlayers.map((p) => (
+                <div key={p.id} className="flex items-center justify-between gap-2">
+                  <span className="text-sm">
+                    {p.name}
+                    {p.isGuest && (
+                      <span className="text-xs text-muted-foreground ml-1">(guest)</span>
+                    )}
+                  </span>
+                  <Input
+                    type="number"
+                    step="any"
+                    placeholder="Score"
+                    className="w-24"
+                    value={state.scores[p.id] ?? ""}
+                    onChange={(e) =>
+                      dispatch({ type: "SET_SCORE", playerId: p.id, value: e.target.value })
+                    }
+                  />
+                </div>
+              ))}
             </div>
           </div>
         )}
-        {state.selected.length > 0 && playerVariables.length > 0 && (
+        {allPlayers.length > 0 && playerVariables.length > 0 && (
           <div className="space-y-3">
             {playerVariables.map((v) => (
               <div key={v.id}>
                 <label className="text-sm font-medium">{v.label}</label>
                 <div className="mt-1 space-y-2">
-                  {state.selected.map((username) => {
-                    const u = users.find((u) => u.pk === username)!;
-                    return (
-                      <div key={username} className="flex items-center justify-between gap-2">
-                        <span className="text-sm">{u.displayName}</span>
-                        <select
-                          className="rounded-md border border-input bg-background px-2 py-1 text-sm"
-                          value={state.variables[username]?.[v.id] ?? ""}
-                          onChange={(e) =>
-                            dispatch({
-                              type: "SET_VARIABLE",
-                              playerId: username,
-                              variableId: v.id,
-                              value: e.target.value,
-                            })
-                          }
-                        >
-                          <option value="">Select…</option>
-                          {v.options.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    );
-                  })}
+                  {allPlayers.map((p) => (
+                    <div key={p.id} className="flex items-center justify-between gap-2">
+                      <span className="text-sm">
+                        {p.name}
+                        {p.isGuest && (
+                          <span className="text-xs text-muted-foreground ml-1">(guest)</span>
+                        )}
+                      </span>
+                      <select
+                        className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                        value={state.variables[p.id]?.[v.id] ?? ""}
+                        onChange={(e) =>
+                          dispatch({
+                            type: "SET_VARIABLE",
+                            playerId: p.id,
+                            variableId: v.id,
+                            value: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">Select…</option>
+                        {v.options.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
@@ -519,41 +626,43 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
             )}
           </div>
         )}
-        {state.selected.length > 0 && trackTurnOrder && (
+        {allPlayers.length > 0 && trackTurnOrder && (
           <div>
             <label className="text-sm font-medium">Seat order (1 = went first)</label>
             <div className="mt-1 space-y-2">
-              {state.selected.map((username) => {
-                const u = users.find((u) => u.pk === username)!;
-                return (
-                  <div key={username} className="flex items-center justify-between gap-2">
-                    <span className="text-sm">{u.displayName}</span>
-                    <select
-                      className="rounded-md border border-input bg-background px-2 py-1 text-sm"
-                      value={state.seats[username] ?? ""}
-                      onChange={(e) =>
-                        dispatch({
-                          type: "SET_SEAT",
-                          playerId: username,
-                          seat: e.target.value === "" ? null : Number(e.target.value),
-                        })
-                      }
-                    >
-                      <option value="">Select…</option>
-                      {state.selected.map((_, i) => (
-                        <option key={i + 1} value={i + 1}>
-                          {i + 1}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                );
-              })}
+              {allPlayers.map((p) => (
+                <div key={p.id} className="flex items-center justify-between gap-2">
+                  <span className="text-sm">
+                    {p.name}
+                    {p.isGuest && (
+                      <span className="text-xs text-muted-foreground ml-1">(guest)</span>
+                    )}
+                  </span>
+                  <select
+                    className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                    value={state.seats[p.id] ?? ""}
+                    onChange={(e) =>
+                      dispatch({
+                        type: "SET_SEAT",
+                        playerId: p.id,
+                        seat: e.target.value === "" ? null : Number(e.target.value),
+                      })
+                    }
+                  >
+                    <option value="">Select…</option>
+                    {allPlayers.map((_, i) => (
+                      <option key={i + 1} value={i + 1}>
+                        {i + 1}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
             </div>
             {errors.seats && <p className="text-destructive text-xs mt-1">{errors.seats}</p>}
           </div>
         )}
-        {state.selected.length > 0 && (
+        {allPlayers.length > 0 && (
           <div>
             <label className="text-sm font-medium">Mood (optional)</label>
             <div className="mt-1 flex gap-2">
@@ -577,7 +686,7 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
             </div>
           </div>
         )}
-        {state.selected.length > 0 && (
+        {allPlayers.length > 0 && (
           <div>
             <label htmlFor={notesId} className="text-sm font-medium">
               Notes (optional)
@@ -592,26 +701,40 @@ export function LogResultDialog({ open, onClose, defaultGameId, editResult }: Pr
             />
           </div>
         )}
-        {state.selected.length > 0 && (
+        {allPlayers.length > 0 && (
           <div>
-            <label className="text-sm font-medium">Winner</label>
-            <select
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={state.winnerId}
-              onChange={(e) => dispatch({ type: "SET_WINNER", playerId: e.target.value })}
-            >
-              <option value="">Select winner…</option>
-              {state.selected.map((username) => {
-                const u = users.find((u) => u.pk === username)!;
+            <label className="text-sm font-medium">
+              Winner
+              <span className="text-xs font-normal text-muted-foreground ml-1.5">
+                (select multiple for a tie)
+              </span>
+            </label>
+            <div className="mt-1 flex flex-wrap gap-2" role="group" aria-label="Winner">
+              {allPlayers.map((p) => {
+                const isWinner = state.winnerIds.includes(p.id);
                 return (
-                  <option key={username} value={username}>
-                    {u.displayName}
-                  </option>
+                  <button
+                    key={p.id}
+                    type="button"
+                    aria-pressed={isWinner}
+                    onClick={() => dispatch({ type: "TOGGLE_WINNER", playerId: p.id })}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm border transition-all duration-200 ${
+                      isWinner
+                        ? "bg-primary text-primary-foreground border-primary scale-105 shadow-xs shadow-primary/20"
+                        : "bg-background hover:bg-accent border-input hover:border-primary/30"
+                    }`}
+                  >
+                    {isWinner && <Trophy size={12} aria-hidden="true" />}
+                    {p.name}
+                    {p.isGuest && <span className="text-[10px] opacity-75">(guest)</span>}
+                  </button>
                 );
               })}
-            </select>
+            </div>
 
-            {errors.winnerId && <p className="text-destructive text-xs mt-1">{errors.winnerId}</p>}
+            {errors.winnerIds && (
+              <p className="text-destructive text-xs mt-1">{errors.winnerIds}</p>
+            )}
           </div>
         )}
         {!editResult && (

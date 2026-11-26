@@ -8,6 +8,7 @@ from lib.auth import AuthUser, require_auth
 from lib.db.games import list_games
 from lib.db.results import list_results
 from lib.db.users import list_users
+from lib.results_helpers import get_winner_ids
 from lib.storage import avatar_url, get_object_base_url
 
 router = APIRouter()
@@ -45,7 +46,7 @@ def get_player_stats(player_id: str, _: Annotated[AuthUser, Depends(require_auth
         if gid not in game_map:
             game_map[gid] = {"gameName": r["gameName"], "wins": 0, "played": 0}
         game_map[gid]["played"] += 1
-        if r.get("winnerId") == player_id:
+        if player_id in get_winner_ids(r):
             game_map[gid]["wins"] += 1
 
     per_game_rows: list[dict[str, Any]] = [
@@ -66,7 +67,7 @@ def get_player_stats(player_id: str, _: Annotated[AuthUser, Depends(require_auth
         if month not in month_map:
             month_map[month] = {"wins": 0, "played": 0}
         month_map[month]["played"] += 1
-        if r.get("winnerId") == player_id:
+        if player_id in get_winner_ids(r):
             month_map[month]["wins"] += 1
 
     win_rate_trend = sorted(

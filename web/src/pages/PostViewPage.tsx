@@ -8,7 +8,7 @@ import { Skeleton } from "../components/ui/skeleton";
 import { useDeletePost, usePosts } from "../hooks/usePosts";
 import { useResults } from "../hooks/useResults";
 import { useAuth } from "../lib/AuthContext";
-import { formatDate, idFromPk } from "../lib/utils";
+import { formatDate, formatWinners, getWinnerIds, idFromPk } from "../lib/utils";
 
 export default function PostViewPage() {
   const { id } = useParams<{ id: string }>();
@@ -84,8 +84,10 @@ export default function PostViewPage() {
               {session.players.map((p) => p.playerName).join(", ")}
             </div>
             <div>
-              <span className="text-muted-foreground">Winner:</span>{" "}
-              <span className="font-medium">{session.winnerName}</span>
+              <span className="text-muted-foreground">
+                {getWinnerIds(session).length > 1 ? "Winners:" : "Winner:"}
+              </span>{" "}
+              <span className="font-medium">{formatWinners(session)}</span>
             </div>
           </div>
         )}

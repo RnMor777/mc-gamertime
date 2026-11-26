@@ -14,7 +14,7 @@ import { usePosts } from "../hooks/usePosts";
 import { useDeleteResult, useResults } from "../hooks/useResults";
 import { useAuth } from "../lib/AuthContext";
 import type { Result } from "../lib/types";
-import { colorForName, formatDate, idFromPk } from "../lib/utils";
+import { colorForName, formatDate, getWinnerIds, idFromPk, isResultWinner } from "../lib/utils";
 
 export default function LogResult() {
   const [open, setOpen] = useState(false);
@@ -111,7 +111,8 @@ export default function LogResult() {
                       const linkedPost = postBySession.get(r.pk);
                       const isConfirming = confirmDelete === r.pk;
                       const imgUrl = gameImageUrl(r);
-                      const isMyWin = r.winnerId === user?.sub;
+                      const isMyWin = isResultWinner(r, user?.sub);
+                      const isTie = getWinnerIds(r).length > 1;
                       const canManageResult = Boolean(
                         user &&
                         (user.role === "admin" ||
@@ -183,20 +184,17 @@ export default function LogResult() {
                                 </div>
                               </div>
 
-                              {/* Players: name + score, winner first-class */}
+                              {/* Players: name + score, winner(s) first-class */}
                               <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                 {r.players.map((p) => {
-                                  const isWinner = p.playerId === r.winnerId;
-                                  return (
-                                    <Link
-                                      key={p.playerId}
-                                      to={`/players/${p.playerId}`}
-                                      className={`inline-flex items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-xs transition-colors hover:border-primary/40 ${
-                                        isWinner
-                                          ? "border-primary/40 bg-primary/10 text-foreground"
-                                          : "bg-muted/40 text-muted-foreground"
-                                      }`}
-                                    >
+                                  const isWinner = isResultWinner(r, p.playerId);
+                                  const pillClass = `inline-flex items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-xs transition-colors ${
+                                    isWinner
+                                      ? "border-primary/40 bg-primary/10 text-foreground"
+                                      : "bg-muted/40 text-muted-foreground"
+                                  }${p.isGuest ? " border-dashed" : " hover:border-primary/40"}`;
+                                  const pillContent = (
+                                    <>
                                       <span aria-hidden="true">
                                         <Avatar name={p.playerName} size="sm" />
                                       </span>
@@ -204,16 +202,37 @@ export default function LogResult() {
                                         <Trophy
                                           size={10}
                                           className="text-primary shrink-0"
-                                          aria-label="Winner"
+                                          aria-label={isTie ? "Tied winner" : "Winner"}
                                         />
                                       )}
                                       <span className="font-medium">{p.playerName}</span>
+                                      {p.isGuest && (
+                                        <span className="text-[10px] opacity-70">(guest)</span>
+                                      )}
                                       {p.score != null && (
                                         <span className="tabular-nums">{p.score}</span>
                                       )}
+                                    </>
+                                  );
+                                  return p.isGuest ? (
+                                    <span key={p.playerId} className={pillClass}>
+                                      {pillContent}
+                                    </span>
+                                  ) : (
+                                    <Link
+                                      key={p.playerId}
+                                      to={`/players/${p.playerId}`}
+                                      className={pillClass}
+                                    >
+                                      {pillContent}
                                     </Link>
                                   );
                                 })}
+                                {isTie && (
+                                  <span className="text-[10px] font-medium uppercase tracking-wider text-primary/80 px-1.5 py-0.5 rounded bg-primary/10">
+                                    Tie
+                                  </span>
+                                )}
                               </div>
 
                               {r.notes && (

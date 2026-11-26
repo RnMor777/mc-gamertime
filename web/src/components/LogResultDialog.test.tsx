@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../lib/api";
@@ -100,7 +100,8 @@ async function fillValidForm() {
   await screen.findByRole("option", { name: "Catan" });
   fireEvent.click(await screen.findByRole("button", { name: "Alice" }));
   fireEvent.click(screen.getByRole("button", { name: "Bob" }));
-  fireEvent.change(screen.getByDisplayValue("Select winner…"), { target: { value: "alice" } });
+  const winnerGroup = screen.getByRole("group", { name: "Winner" });
+  fireEvent.click(within(winnerGroup).getByRole("button", { name: "Alice" }));
 }
 
 function pickPhotos(count: number) {
@@ -236,7 +237,50 @@ describe("LogResultDialog", () => {
 
     renderOpen({ onClose: vi.fn(), editResult: created });
     await screen.findByRole("button", { name: "Save changes" });
-    await screen.findByRole("button", { name: "Alice" });
     expect(screen.queryByLabelText(/photos/i)).not.toBeInTheDocument();
+  });
+
+  it("supports ties by selecting multiple winners", async () => {
+    const onClose = vi.fn();
+    renderOpen({ onClose });
+    await fillValidForm();
+    const winnerGroup = screen.getByRole("group", { name: "Winner" });
+    fireEvent.click(within(winnerGroup).getByRole("button", { name: "Bob" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Log session" }));
+
+    await vi.waitFor(() => expect(api.addResult).toHaveBeenCalled());
+    const payload = vi.mocked(api.addResult).mock.calls[0][0];
+    expect(payload.winnerIds).toEqual(["alice", "bob"]);
+    expect(payload.winnerNames).toEqual(["Alice", "Bob"]);
+    expect(payload.winnerId).toBe("alice");
+    expect(payload.winnerName).toBe("Alice & Bob");
+  });
+
+  it("supports adding guest players and marking a guest as winner", async () => {
+    const onClose = vi.fn();
+    renderOpen({ onClose });
+    await screen.findByRole("option", { name: "Catan" });
+    fireEvent.click(await screen.findByRole("button", { name: "Alice" }));
+
+    fireEvent.change(screen.getByPlaceholderText("Add guest player…"), {
+      target: { value: "Charlie" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add guest" }));
+
+    const winnerGroup = screen.getByRole("group", { name: "Winner" });
+    fireEvent.click(within(winnerGroup).getByRole("button", { name: /Charlie/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Log session" }));
+
+    await vi.waitFor(() => expect(api.addResult).toHaveBeenCalled());
+    const payload = vi.mocked(api.addResult).mock.calls[0][0];
+    expect(payload.players).toHaveLength(2);
+    const guest = payload.players.find((p) => p.isGuest);
+    expect(guest).toBeDefined();
+    expect(guest?.playerName).toBe("Charlie");
+    expect(guest?.playerId).toMatch(/^guest:charlie-/);
+    expect(payload.winnerIds).toEqual([guest!.playerId]);
+    expect(payload.winnerNames).toEqual(["Charlie"]);
   });
 });

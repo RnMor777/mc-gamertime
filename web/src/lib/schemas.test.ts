@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ResultFormSchema } from "./schemas";
 
-const valid = { gameId: "g1", players: ["alice"], winnerId: "alice" };
+const valid = { gameId: "g1", players: ["alice"], winnerIds: ["alice"] };
 
 afterEach(() => vi.useRealTimers());
 

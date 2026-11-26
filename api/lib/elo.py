@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
+from lib.results_helpers import get_winner_ids, is_guest_player
+
 START_RATING = 1000.0
 K = 32.0
 
@@ -11,26 +13,41 @@ def _ordered(results: list[dict]) -> list[dict]:
 
 
 def _apply(ratings: dict[str, float], r: dict) -> None:
-    """Winner duels each other participant pairwise. Unrated results are no-ops."""
-    player_ids = [p["playerId"] for p in r.get("players", []) if p.get("playerId")]
-    winner_id = r.get("winnerId")
-    if not winner_id or len(player_ids) < 2 or winner_id not in player_ids:
+    """Winners duel each non-winner (1-0) and each co-winner (0.5-0.5) pairwise.
+
+    Guests are excluded from ELO ratings. Unrated results are no-ops.
+    """
+    player_ids = [
+        p["playerId"] for p in r.get("players", []) if p.get("playerId") and not is_guest_player(p)
+    ]
+    winner_ids = [wid for wid in get_winner_ids(r) if wid in player_ids]
+    if not winner_ids or len(player_ids) < 2:
         return
 
     for pid in player_ids:
         ratings.setdefault(pid, START_RATING)
 
-    opponents = [pid for pid in player_ids if pid != winner_id]
-    k_per_duel = K / len(opponents)
+    winner_set = set(winner_ids)
+    losers = [pid for pid in player_ids if pid not in winner_set]
+    k_per_duel = K / (len(player_ids) - 1)
     pre = dict(ratings)
 
-    winner_gain = 0.0
-    for opp in opponents:
-        expected = 1 / (1 + 10 ** ((pre[opp] - pre[winner_id]) / 400))
-        delta = k_per_duel * (1 - expected)
-        ratings[opp] -= delta
-        winner_gain += delta
-    ratings[winner_id] += winner_gain
+    # Winners vs losers (1.0 vs 0.0)
+    for w in winner_ids:
+        for opp in losers:
+            expected = 1 / (1 + 10 ** ((pre[opp] - pre[w]) / 400))
+            delta = k_per_duel * (1 - expected)
+            ratings[opp] -= delta
+            ratings[w] += delta
+
+    # Co-winners vs each other (0.5 vs 0.5)
+    for i in range(len(winner_ids)):
+        for j in range(i + 1, len(winner_ids)):
+            w1, w2 = winner_ids[i], winner_ids[j]
+            expected = 1 / (1 + 10 ** ((pre[w2] - pre[w1]) / 400))
+            delta = k_per_duel * (0.5 - expected)
+            ratings[w1] += delta
+            ratings[w2] -= delta
 
 
 def iter_elo(results: list[dict]) -> Iterator[tuple[dict, dict[str, float]]]:

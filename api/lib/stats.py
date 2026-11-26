@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from lib.elo import compute_elo
+from lib.results_helpers import get_winner_ids, is_guest_player
 
 
 def _compute_variable_stats(game: dict, results: list[dict]) -> dict:
@@ -18,13 +19,13 @@ def _compute_variable_stats(game: dict, results: list[dict]) -> dict:
             opt: {"picks": 0, "wins": 0, "scores": []} for opt in options
         }
         for r in results:
-            winner_id = r.get("winnerId")
+            winner_ids = set(get_winner_ids(r))
             for p in r["players"]:
                 value = (p.get("variables") or {}).get(vid)
                 if value not in counts:
                     continue
                 counts[value]["picks"] += 1
-                if p.get("playerId") == winner_id:
+                if p.get("playerId") in winner_ids:
                     counts[value]["wins"] += 1
                 if p.get("score") is not None:
                     counts[value]["scores"].append(p["score"])
@@ -50,7 +51,7 @@ def _compute_seat_stats(game: dict, results: list[dict]) -> list[dict]:
 
     seat_counts: dict[int, dict] = {}
     for r in results:
-        winner_id = r.get("winnerId")
+        winner_ids = set(get_winner_ids(r))
         for p in r["players"]:
             seat = p.get("seat")
             if seat is None:
@@ -58,7 +59,7 @@ def _compute_seat_stats(game: dict, results: list[dict]) -> list[dict]:
             if seat not in seat_counts:
                 seat_counts[seat] = {"plays": 0, "wins": 0}
             seat_counts[seat]["plays"] += 1
-            if p.get("playerId") == winner_id:
+            if p.get("playerId") in winner_ids:
                 seat_counts[seat]["wins"] += 1
 
     return [
@@ -79,15 +80,17 @@ def compute_stats(results: list[dict], games: list[dict] | None = None) -> dict:
     player_map: dict[str, dict] = {}
     for r in results:
         for p in r["players"]:
+            if is_guest_player(p):
+                continue
             pid = p.get("playerId")
             if not pid:
                 continue
             if pid not in player_map:
                 player_map[pid] = {"name": p["playerName"], "wins": 0, "played": 0}
             player_map[pid]["played"] += 1
-        winner_id = r.get("winnerId")
-        if winner_id and winner_id in player_map:
-            player_map[winner_id]["wins"] += 1
+        for wid in get_winner_ids(r):
+            if wid in player_map:
+                player_map[wid]["wins"] += 1
 
     elo = compute_elo(results)
 
@@ -108,10 +111,12 @@ def compute_stats(results: list[dict], games: list[dict] | None = None) -> dict:
     h2h_map: dict[str, dict] = {}
     for r in results:
         players = r["players"]
-        winner_id = r.get("winnerId")
+        winner_ids = set(get_winner_ids(r))
         for i in range(len(players)):
             for j in range(i + 1, len(players)):
                 a, b = players[i], players[j]
+                if is_guest_player(a) or is_guest_player(b):
+                    continue
                 if not a.get("playerId") or not b.get("playerId"):
                     continue
                 p1, p2 = (a, b) if a["playerId"] < b["playerId"] else (b, a)
@@ -125,9 +130,11 @@ def compute_stats(results: list[dict], games: list[dict] | None = None) -> dict:
                         "p1Wins": 0,
                         "p2Wins": 0,
                     }
-                if winner_id == p1["playerId"]:
+                p1_won = p1["playerId"] in winner_ids
+                p2_won = p2["playerId"] in winner_ids
+                if p1_won and not p2_won:
                     h2h_map[key]["p1Wins"] += 1
-                elif winner_id == p2["playerId"]:
+                elif p2_won and not p1_won:
                     h2h_map[key]["p2Wins"] += 1
 
     head_to_head = list(h2h_map.values())
@@ -137,6 +144,8 @@ def compute_stats(results: list[dict], games: list[dict] | None = None) -> dict:
     streak_map: dict[str, dict] = {}
     for r in sorted_results:
         for p in r["players"]:
+            if is_guest_player(p):
+                continue
             pid = p.get("playerId")
             if not pid:
                 continue
@@ -144,12 +153,14 @@ def compute_stats(results: list[dict], games: list[dict] | None = None) -> dict:
                 streak_map[pid] = {"name": p["playerName"], "current": 0, "best": 0}
 
     for r in sorted_results:
-        participant_ids = {p["playerId"] for p in r["players"] if p.get("playerId")}
-        winner_id = r.get("winnerId")
+        participant_ids = {
+            p["playerId"] for p in r["players"] if p.get("playerId") and not is_guest_player(p)
+        }
+        winner_ids = set(get_winner_ids(r))
         for pid, entry in streak_map.items():
             if pid not in participant_ids:
                 continue
-            if winner_id == pid:
+            if pid in winner_ids:
                 entry["current"] += 1
                 if entry["current"] > entry["best"]:
                     entry["best"] = entry["current"]
@@ -199,6 +210,8 @@ def compute_stats(results: list[dict], games: list[dict] | None = None) -> dict:
         game_stats_map[gid]["totalPlays"] += 1
         game_stats_map[gid]["results"].append(r)
         for p in r["players"]:
+            if is_guest_player(p):
+                continue
             pid = p.get("playerId")
             if not pid:
                 continue
@@ -206,9 +219,9 @@ def compute_stats(results: list[dict], games: list[dict] | None = None) -> dict:
             if pid not in pm:
                 pm[pid] = {"name": p["playerName"], "wins": 0, "played": 0}
             pm[pid]["played"] += 1
-        winner_id = r.get("winnerId")
-        if winner_id and winner_id in game_stats_map[gid]["playerMap"]:
-            game_stats_map[gid]["playerMap"][winner_id]["wins"] += 1
+        for wid in get_winner_ids(r):
+            if wid in game_stats_map[gid]["playerMap"]:
+                game_stats_map[gid]["playerMap"][wid]["wins"] += 1
 
     game_stats: list[dict[str, Any]] = []
     for gid, gs in game_stats_map.items():

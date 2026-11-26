@@ -296,3 +296,32 @@ def test_compute_stats_without_games_arg_still_works():
     stats = compute_stats(results)
     assert stats["gameStats"][0]["variableStats"] == {}
     assert stats["gameStats"][0]["seatStats"] == []
+
+
+def test_compute_stats_ties_and_guests():
+    results = [
+        {
+            "pk": "r1",
+            "gameId": "game-1",
+            "gameName": "Catan",
+            "date": "2026-01-01",
+            "players": [
+                {"playerId": "p1", "playerName": "Alice"},
+                {"playerId": "p2", "playerName": "Bob"},
+                {"playerId": "guest:g1", "playerName": "Charlie", "isGuest": True},
+            ],
+            "winnerIds": ["p1", "p2"],
+            "winnerId": "p1",
+            "winnerName": "Alice & Bob",
+            "createdAt": "2026-01-01T00:00:00Z",
+        }
+    ]
+    stats = compute_stats(results)
+    lb = {e["playerId"]: e for e in stats["leaderboard"]}
+    assert set(lb.keys()) == {"p1", "p2"}
+    assert lb["p1"]["wins"] == 1
+    assert lb["p2"]["wins"] == 1
+    # Tied co-winners do not count as beating each other in head-to-head
+    assert stats["headToHead"] == [
+        {"p1Id": "p1", "p1Name": "Alice", "p2Id": "p2", "p2Name": "Bob", "p1Wins": 0, "p2Wins": 0}
+    ]

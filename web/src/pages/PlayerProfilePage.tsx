@@ -34,7 +34,14 @@ import { useStats } from "../hooks/useStats";
 import { useAuth } from "../lib/AuthContext";
 import { deleteAvatar, uploadAvatar } from "../lib/api";
 import type { Player } from "../lib/types";
-import { colorForName, formatDate, idFromPk, pluralize } from "../lib/utils";
+import {
+  colorForName,
+  formatDate,
+  getWinnerIds,
+  idFromPk,
+  isResultWinner,
+  pluralize,
+} from "../lib/utils";
 
 export default function PlayerProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -114,7 +121,7 @@ export default function PlayerProfilePage() {
   const myResults = results.filter((r) => r.players.some((p) => p.playerId === id));
   const playerName = myResults[0]?.players.find((p) => p.playerId === id)?.playerName ?? "Unknown";
 
-  const wins = myResults.filter((r) => r.winnerId === id).length;
+  const wins = myResults.filter((r) => isResultWinner(r, id)).length;
   const played = myResults.length;
   const winRate = played > 0 ? wins / played : 0;
 
@@ -122,7 +129,7 @@ export default function PlayerProfilePage() {
   let streak = 0,
     streakBest = 0;
   for (const r of chronological) {
-    if (r.winnerId === id) {
+    if (isResultWinner(r, id)) {
       streak++;
       if (streak > streakBest) streakBest = streak;
     } else streak = 0;
@@ -165,7 +172,7 @@ export default function PlayerProfilePage() {
     gameCounts[r.gameId].count++;
     if (!gameWins[r.gameId]) gameWins[r.gameId] = { name: r.gameName, wins: 0, played: 0 };
     gameWins[r.gameId].played++;
-    if (r.winnerId === id) gameWins[r.gameId].wins++;
+    if (isResultWinner(r, id)) gameWins[r.gameId].wins++;
   }
 
   const favoriteGame = Object.values(gameCounts).sort((a, b) => b.count - a.count)[0];
@@ -176,13 +183,15 @@ export default function PlayerProfilePage() {
   const h2h: Record<string, { name: string; theirWins: number; myWins: number; shared: number }> =
     {};
   for (const r of myResults) {
+    const iWon = isResultWinner(r, id);
     for (const p of r.players) {
-      if (p.playerId === id) continue;
+      if (p.playerId === id || p.isGuest) continue;
       if (!h2h[p.playerId])
         h2h[p.playerId] = { name: p.playerName, theirWins: 0, myWins: 0, shared: 0 };
       h2h[p.playerId].shared++;
-      if (r.winnerId === p.playerId) h2h[p.playerId].theirWins++;
-      if (r.winnerId === id) h2h[p.playerId].myWins++;
+      const theyWon = isResultWinner(r, p.playerId);
+      if (theyWon && !iWon) h2h[p.playerId].theirWins++;
+      if (iWon && !theyWon) h2h[p.playerId].myWins++;
     }
   }
   const nemesis = Object.entries(h2h)
@@ -659,8 +668,8 @@ export default function PlayerProfilePage() {
                     {r.gameName}
                   </Link>
                 </div>
-                <Badge variant={r.winnerId === id ? "default" : "secondary"}>
-                  {r.winnerId === id ? "Win" : "Loss"}
+                <Badge variant={isResultWinner(r, id) ? "default" : "secondary"}>
+                  {isResultWinner(r, id) ? (getWinnerIds(r).length > 1 ? "Tie" : "Win") : "Loss"}
                 </Badge>
               </div>
             ))}

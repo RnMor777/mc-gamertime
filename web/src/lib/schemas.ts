@@ -17,5 +17,5 @@ export const ResultFormSchema = z.object({
     .refine((d) => d <= endOfTomorrow(), "Date cannot be in the future"),
 
   players: z.array(z.string()).min(1, "Please select at least 1 player"),
-  winnerId: z.string().min(1, "Please select a winner"),
+  winnerIds: z.array(z.string()).min(1, "Please select at least 1 winner"),
 });
